@@ -246,7 +246,16 @@
   #sentinelIdle .nx b { color: var(--warn); }
   body.parked #sentinelIdle .nx { font-size: 12px; margin: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   body.parked #sentinelIdle .d, body.parked #sentinelIdle #sStatus { display: none; }
-  #sentinelIdle .snote { margin-top: 10px; }
+  #sentinelIdle .snote { margin-top: 0; }
+  #sentinelIdle .sbtns { display: flex; gap: 8px; margin-top: 10px; }
+  body.parked #sentinelIdle .sbtns { margin: 0; gap: 4px; }
+  #sQuickPanel { display: none; height: 100%; flex-direction: column; padding: 12px; gap: 6px; }
+  body.quicking #sentinelIdle { display: none !important; }
+  body.quicking #sQuickPanel { display: flex; }
+  #sQuickPanel .t { font-size: 16px; font-weight: bold; color: var(--accent); }
+  #sQuickPanel input { font-size: 15px; }
+  #sQuickPanel .sqtime { font-size: 20px; color: var(--accent); text-align: center; }
+  #sQuickPanel .sqtime .z { color: var(--warn); font-size: 13px; }
   #sNotePanel { display: none; height: 100%; flex-direction: column; padding: 12px; }
   body.noting #sentinelIdle { display: none !important; }
   body.noting #sNotePanel { display: flex; }
@@ -620,8 +629,33 @@
   <div class="d">Drag me onto a monitor and leave me open.<br>I will grow to fill this monitor when an alarm fires,<br>then shrink to a small tab in the corner after you acknowledge.</div>
   <div class="c" id="sClock">--:--:--</div>
   <div class="nx" id="sNext"></div>
-  <button class="small primary snote" onclick="sentinelNotes()" title="Write a quick note here; it goes into the shift log on the main page">Notes</button>
+  <span class="sbtns">
+    <button class="small primary snote" onclick="sentinelQuick()" title="Set a quick one-time alarm from here">Alarm</button>
+    <button class="small primary snote" onclick="sentinelNotes()" title="Write a quick note here; it goes into the shift log on the main page">Notes</button>
+  </span>
   <div id="sStatus">Linked to Desk Log</div>
+</div>
+
+<div id="sQuickPanel">
+  <div class="t">QUICK ALARM</div>
+  <input id="sqTitle" placeholder="What is it? (e.g. Call back ZTL)" onkeydown="if(event.key==='Enter'){sQuickAdd();} if(event.key==='Escape'){sQuickClose();}">
+  <div class="sqtime" id="sqTime">--:--</div>
+  <div class="quick">
+    <button class="small" onclick="sqPlus(1)">+1</button>
+    <button class="small" onclick="sqPlus(5)">+5</button>
+    <button class="small" onclick="sqPlus(15)">+15</button>
+    <button class="small" onclick="sqSnap(15)">:15</button>
+    <button class="small" onclick="sqSnap(30)">:30</button>
+    <button class="small" onclick="sqSnap(45)">:45</button>
+    <button class="small" onclick="sqSnap(0)">Next Hour</button>
+    <button class="small" onclick="sqUndo()">Undo</button>
+    <button class="small" onclick="sqReset()">Reset</button>
+  </div>
+  <div class="actions" style="margin-top:8px">
+    <button class="primary" onclick="sQuickAdd()">ADD</button>
+    <button onclick="sQuickClose()">Cancel</button>
+    <span class="hint" id="sqStatus" style="margin:0"></span>
+  </div>
 </div>
 
 <div id="sNotePanel">
@@ -683,6 +717,7 @@
       <h3 id="h-windows">Alert windows</h3>
       <p>The main page can only take over the screen it is on. To cover the others, it opens small helper windows, one per screen. Drag each onto a different monitor. When an alarm fires, each one grows to fill its monitor, flashes and beeps. When you acknowledge, they shrink to a small strip in the bottom-right corner showing the Zulu time and a Notes button.</p>
       <p>The strip at the top of each helper window with the web address is put there by Edge and cannot be removed.</p>
+      <p><b>Alarm button</b> on a helper window opens a small Quick Add right there: type what it is, build the time with +1 / +5 / +15 / :15 / :30 / :45 / Next Hour, click ADD. It goes straight into the list on the main page as a one-time alarm.</p>
       <p><b>Notes button</b> on a helper window opens a quick note box right there. Type, press Enter, and the note goes into your shift log on the main page with the time stamp. Handy when the main page is buried under something else.</p>
       <p>If a helper window gets closed, click Open Alert Windows again. The blue line under that button shows how many are connected. If Edge blocks the popups, click the blocked-popup icon at the right end of the address bar, choose Always allow, and click again.</p>
       <p><b>Keep pulling alert windows to the front</b> (checkbox): while an alarm is live, the windows push themselves back in front every second so an email or Teams window cannot bury them. Uncheck it if you find that annoying.</p>
@@ -1564,6 +1599,16 @@
       }
     } else if (msg.type === 'notes') {
       if (!SENTINEL) jumpToNotes();
+    } else if (msg.type === 'quick') {
+      if (!SENTINEL && msg.qid && seenNotes.indexOf(msg.qid) < 0 && msg.at > Date.now() - 60000) {
+        seenNotes.push(msg.qid); if (seenNotes.length > 200) seenNotes.shift();
+        var qa = { id: uid(), cat: 'other', flt: '', fltNo: '', tail: '', orig: '', dest: '',
+          at: msg.at, pre: 0, repeat: 'none', tz: 'L',
+          months: [true, true, true, true, true, true, true, true, true, true, true, true], season: null,
+          notes: '', muted: false, fired: false, preFired: false, title: String(msg.title || 'Reminder').slice(0, 120) };
+        alarms.push(qa); save(); render();
+        document.getElementById('status').textContent = 'Quick added from alert window: ' + qa.title + ' at ' + fmtShort(qa.at);
+      }
     } else if (msg.type === 'note') {
       // the same note can arrive over more than one channel - log it once
       if (!SENTINEL && typeof msg.text === 'string' && msg.text.trim() && msg.nid && seenNotes.indexOf(msg.nid) < 0) {
@@ -1584,7 +1629,7 @@
     } catch (e) {}
   }
   // Sentinel: collapse to a small strip in the bottom-right corner of its monitor
-  var PARK_W = 420, PARK_H = 46;
+  var PARK_W = 480, PARK_H = 46;
   function shrinkBack() {
     try {
       var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
@@ -2146,6 +2191,48 @@
       var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (f && f.type.indexOf('image/') === 0) capAddBlob(f);
     });
+  }
+
+  // ---------- Quick alarm from an alert window ----------
+  var QUICK_W = 520, QUICK_H = 290;
+  var sqAt = 0, sqTouched = false, sqHist = [], sqTimer = null;
+  function sqShow() {
+    var d = new Date(sqAt);
+    document.getElementById('sqTime').innerHTML = pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L <span class="z">' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z</span> <span class="z">(' + (sqTouched ? countdown(sqAt) : 'now') + ')</span>';
+  }
+  function sqReset() { var d = new Date(); d.setSeconds(0, 0); sqAt = d.getTime(); sqTouched = false; sqHist = []; sqShow(); }
+  function sqTick() { if (!sqTouched) { var d = new Date(); d.setSeconds(0, 0); sqAt = d.getTime(); } sqShow(); }
+  function sqPush() { sqHist.push({ at: sqAt, t: sqTouched }); if (sqHist.length > 50) sqHist.shift(); }
+  function sqPlus(m) { sqPush(); sqTouched = true; sqAt += m * 60000; sqShow(); }
+  function sqSnap(minute) { sqPush(); sqTouched = true; var d = new Date(sqAt); d.setSeconds(0, 0); if (d.getMinutes() >= minute) d.setHours(d.getHours() + 1); d.setMinutes(minute); sqAt = d.getTime(); sqShow(); }
+  function sqUndo() { if (!sqHist.length) return; var p = sqHist.pop(); sqAt = p.at; sqTouched = p.t; sqTick(); }
+  function sentinelQuick() {
+    document.body.className = 'sentinel quicking';
+    try {
+      var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
+      var t = (screen.availTop !== undefined) ? screen.availTop : 0;
+      window.resizeTo(QUICK_W, QUICK_H);
+      window.moveTo(l + screen.availWidth - QUICK_W - 10, t + screen.availHeight - QUICK_H - 10);
+    } catch (e) {}
+    document.getElementById('sqTitle').value = ''; document.getElementById('sqStatus').textContent = '';
+    sqReset();
+    if (sqTimer) clearInterval(sqTimer);
+    sqTimer = setInterval(sqTick, 1000);
+    try { window.focus(); } catch (e) {}
+    setTimeout(function () { document.getElementById('sqTitle').focus(); }, 50);
+  }
+  function sQuickAdd() {
+    if (!sqTouched) { document.getElementById('sqStatus').textContent = 'Pick a time first (+1, +5, :15 ...).'; return; }
+    if (sqAt <= Date.now()) { document.getElementById('sqStatus').textContent = 'That time has passed. Add a minute.'; return; }
+    var title = document.getElementById('sqTitle').value.trim() || 'Reminder';
+    broadcast({ type: 'quick', title: title, at: sqAt, qid: uid() });
+    document.getElementById('sqStatus').textContent = 'Added: ' + title + ' at ' + fmtShort(sqAt);
+    setTimeout(sQuickClose, 700);
+  }
+  function sQuickClose() {
+    if (sqTimer) { clearInterval(sqTimer); sqTimer = null; }
+    document.body.className = 'sentinel';
+    shrinkBack();
   }
 
   var NOTE_W = 520, NOTE_H = 300;
@@ -2748,7 +2835,7 @@
   window.padUndo = padUndo; window.padRedo = padRedo; window.padLogKey = padLogKey; window.padClearAll = padClearAll;
   window.confirmCheck = confirmCheck; window.confirmKey = confirmKey; window.confirmGo = confirmGo; window.confirmCancel = confirmCancel;
   window.padToggleArchive = padToggleArchive; window.padSettingChanged = padSettingChanged; window.showTab = showTab;
-  window.openHelp = openHelp; window.closeHelp = closeHelp; window.sentinelNotes = sentinelNotes; window.sNoteKey = sNoteKey; window.sNoteSave = sNoteSave; window.sNoteClose = sNoteClose; window.capPaste = capPaste; window.capFilePicked = capFilePicked; window.capNewShift = capNewShift; window.capToggleArchive = capToggleArchive; window.capCloseView = capCloseView;
+  window.openHelp = openHelp; window.closeHelp = closeHelp; window.sentinelNotes = sentinelNotes; window.sentinelQuick = sentinelQuick; window.sqPlus = sqPlus; window.sqSnap = sqSnap; window.sqUndo = sqUndo; window.sqReset = sqReset; window.sQuickAdd = sQuickAdd; window.sQuickClose = sQuickClose; window.sNoteKey = sNoteKey; window.sNoteSave = sNoteSave; window.sNoteClose = sNoteClose; window.capPaste = capPaste; window.capFilePicked = capFilePicked; window.capNewShift = capNewShift; window.capToggleArchive = capToggleArchive; window.capCloseView = capCloseView;
   window.openFile = openFile; window.createFile = createFile; window.saveFileNow = saveFileNow;
   window.guideSound = guideSound; window.guideWindows = guideWindows; window.guideTest = guideTest;
   window.hideGuide = hideGuide; window.showGuide = showGuide;
