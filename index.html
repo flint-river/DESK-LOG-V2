@@ -1704,17 +1704,21 @@
   }
   // While an alarm is live, keep bringing the alert windows back to the front
   var frontTimer = null;
+  // Bring every alert window to the front. focus() alone is ignored without a click, but
+  // re-targeting an existing window by name through window.open('', name) raises it in
+  // Edge/Chrome (popups are already allowed for this site) and does not reload it.
+  function raiseSentinels() {
+    if (SENTINEL) { try { window.focus(); } catch (e) {} return; }
+    for (var i = 0; i < sentinels.length; i++) {
+      if (!sentinels[i] || sentinels[i].closed) continue;
+      try { var w = window.open('', 'occSentinel' + i); if (w) { sentinels[i] = w; w.focus(); } } catch (e) {}
+    }
+  }
   function startKeepFront() {
     stopKeepFront();
+    raiseSentinels();
     if (!settings.keepFront) return;
-    frontTimer = setInterval(function () {
-      try { window.focus(); } catch (e) {}
-      if (!SENTINEL) {
-        for (var i = 0; i < sentinels.length; i++) {
-          try { if (sentinels[i] && !sentinels[i].closed) sentinels[i].focus(); } catch (e) {}
-        }
-      }
-    }, 1000);
+    frontTimer = setInterval(raiseSentinels, 1000);
   }
   function stopKeepFront() {
     if (frontTimer) { clearInterval(frontTimer); frontTimer = null; }
