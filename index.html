@@ -116,6 +116,11 @@
   .helpbody ul, .helpbody ol { margin: 6px 0 6px 22px; padding: 0; }
   .helpbody li { margin: 4px 0; }
   .helpbody b { color: var(--text); }
+  #confirmBox { display: none; position: fixed; inset: 0; z-index: 9996; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+  #confirmBox.show { display: flex; }
+  .cbox { background: var(--panel); border: 2px solid var(--danger); border-radius: 8px; padding: 18px 22px; max-width: 520px; }
+  .cbox .ct { font-size: 17px; font-weight: bold; color: var(--danger); margin-bottom: 8px; }
+  .cbox .cm { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
   #capView { display: none; position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.92); flex-direction: column; align-items: center; justify-content: center; cursor: zoom-out; padding: 20px; }
   #capView.show { display: flex; }
   #capView img { max-width: 96vw; max-height: 84vh; object-fit: contain; }
@@ -729,7 +734,7 @@
       </ul>
 
       <h3 id="h-notes">Notes tab</h3>
-      <p>Your running log for the shift. Start typing in the entry box and the date and time stamp themselves in front of what you type (10/28/26 14:38L / 18:38Z - ). Press Enter or click Add to save that note to the log below and start the next one. + Time Stamp drops another stamp inside the box if one note spans some time. The log itself can be edited by clicking into it. <b>Undo</b> and <b>Redo</b> (or Ctrl+Z / Ctrl+Y in the log) step back through the last 50 changes, including an accidental delete, a Clear All, or a New Shift archive. <b>Clear All</b> wipes the log after a yes/no check (it does not archive; use New Shift for that).</p>
+      <p>Your running log for the shift. Start typing in the entry box and the date and time stamp themselves in front of what you type (10/28/26 14:38L / 18:38Z - ). Press Enter or click Add to save that note to the log below and start the next one. + Time Stamp drops another stamp inside the box if one note spans some time. The log itself can be edited by clicking into it. <b>Undo</b> and <b>Redo</b> (or Ctrl+Z / Ctrl+Y in the log) step back through the last 50 changes, including an accidental delete, a Clear All, or a New Shift archive. <b>Clear All</b> wipes the log after you type YES in the box that pops up (it does not archive; use New Shift for that).</p>
       <p><b>log acked alarms</b> (on by default) adds a stamped line each time you acknowledge an alarm, so the call log writes itself.</p>
       <p><b>Copy for SOCR</b> copies the whole log to the clipboard. <b>New Shift (archive)</b> moves today's notes under Past shifts (the last 14 are kept) and blanks the pad; click a past shift to copy it. If you forget, it happens by itself: notes from a shift that started 14 or more hours ago are archived automatically the next time the page opens, your file is opened, or a new note is added, so a night shift's notes stay together and the next shift starts clean.</p>
       <p>The number on the NOTES tab is how many notes you have this shift.</p>
@@ -760,6 +765,19 @@
         <li><b>Red bar at the top</b> - you are not in Edge or Chrome. Open the page in one of those.</li>
         <li><b>It fired, then fired again at the call time</b> - that was the old behavior. Now it fires once, at the early time if you set one. If you see two, you have an old copy; reload the page.</li>
       </ul>
+    </div>
+  </div>
+</div>
+
+<div id="confirmBox">
+  <div class="cbox">
+    <div class="ct" id="confirmTitle">Are you sure?</div>
+    <div class="cm" id="confirmMsg"></div>
+    <div class="row" style="align-items:center; margin-top:12px">
+      <span class="hint" style="margin:0; flex:0 0 auto">Type <b>YES</b> to confirm:</span>
+      <input id="confirmInput" maxlength="3" style="width:90px; text-align:center; font-size:16px; letter-spacing:2px" onkeydown="confirmKey(event)" oninput="confirmCheck()">
+      <button class="danger" id="confirmOk" onclick="confirmGo()" disabled>Do it</button>
+      <button onclick="confirmCancel()">Cancel</button>
     </div>
   </div>
 </div>
@@ -1784,12 +1802,13 @@
   function padClearAll() {
     if (!notes.text.trim()) { document.getElementById('padStatus').textContent = 'The log is already empty.'; return; }
     var n = notes.text.split('\n').filter(function (l) { return l.trim(); }).length;
-    if (!confirm('Clear all ' + n + ' note(s) from the shift log?\n\nThey are NOT archived. Undo can bring them back while this page stays open.')) return;
-    padHist.push(notes.text); if (padHist.length > 50) padHist.shift(); padRedoStack = []; padLastSnap = '';
-    notes.text = '';
-    document.getElementById('padText').value = '';
-    padSave(); updateNotesCount(); padUndoButtons();
-    document.getElementById('padStatus').textContent = 'Log cleared. Click Undo if that was a mistake.';
+    askYes('Clear the shift log?', 'This removes all ' + n + ' note(s) from the shift log.\nThey are NOT archived. Undo can bring them back while this page stays open.', function () {
+      padHist.push(notes.text); if (padHist.length > 50) padHist.shift(); padRedoStack = []; padLastSnap = '';
+      notes.text = '';
+      document.getElementById('padText').value = '';
+      padSave(); updateNotesCount(); padUndoButtons();
+      document.getElementById('padStatus').textContent = 'Log cleared. Click Undo if that was a mistake.';
+    });
   }
   function padUndoButtons() {
     var u = document.getElementById('padUndoBtn'), r = document.getElementById('padRedoBtn');
@@ -2134,6 +2153,22 @@
     var e = document.getElementById('padEntry');
     if (e) { e.focus(); e.scrollIntoView({ block: 'center' }); }
   }
+
+  // ---------- In-page YES confirmation (does not rely on browser dialogs) ----------
+  var confirmAction = null;
+  function askYes(title, msg, fn) {
+    confirmAction = fn;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent = msg;
+    var inp = document.getElementById('confirmInput'); inp.value = '';
+    document.getElementById('confirmOk').disabled = true;
+    document.getElementById('confirmBox').className = 'show';
+    setTimeout(function () { inp.focus(); }, 50);
+  }
+  function confirmCheck() { document.getElementById('confirmOk').disabled = document.getElementById('confirmInput').value.trim().toUpperCase() !== 'YES'; }
+  function confirmKey(ev) { if (ev.key === 'Enter') { confirmCheck(); if (!document.getElementById('confirmOk').disabled) confirmGo(); } if (ev.key === 'Escape') confirmCancel(); }
+  function confirmGo() { var fn = confirmAction; confirmCancel(); if (fn) fn(); }
+  function confirmCancel() { confirmAction = null; document.getElementById('confirmBox').className = ''; }
 
   // ---------- Help ----------
   function openHelp() { document.getElementById('help').className = 'show'; document.querySelector('.helpbody').scrollTop = 0; }
@@ -2555,8 +2590,11 @@
     broadcast({ type: 'fire', title: a.title, when: when, notes: a.notes, pre: 0 });
   }
   function clearAll() {
-    if (!confirm('Delete all reminders?')) return;
-    alarms = []; save(); render();
+    if (!alarms.length) { document.getElementById('status').textContent = 'No reminders to clear.'; return; }
+    askYes('Delete all reminders?', 'This removes all ' + alarms.length + ' reminder(s), including the standing calls.\nLoad Defaults can bring the standard ones back.', function () {
+      alarms = []; save(); render();
+      document.getElementById('status').textContent = 'All reminders deleted.';
+    });
   }
   function exportAlarms() {
     var io = document.getElementById('io');
@@ -2679,6 +2717,7 @@
   window.padStamp = padStamp; window.padChanged = padChanged; window.padCopy = padCopy; window.padNewShift = padNewShift;
   window.padEntryInput = padEntryInput; window.padEntryKey = padEntryKey; window.padAddEntry = padAddEntry;
   window.padUndo = padUndo; window.padRedo = padRedo; window.padLogKey = padLogKey; window.padClearAll = padClearAll;
+  window.confirmCheck = confirmCheck; window.confirmKey = confirmKey; window.confirmGo = confirmGo; window.confirmCancel = confirmCancel;
   window.padToggleArchive = padToggleArchive; window.padSettingChanged = padSettingChanged; window.showTab = showTab;
   window.openHelp = openHelp; window.closeHelp = closeHelp; window.sentinelNotes = sentinelNotes; window.sNoteKey = sNoteKey; window.sNoteSave = sNoteSave; window.sNoteClose = sNoteClose; window.capPaste = capPaste; window.capFilePicked = capFilePicked; window.capNewShift = capNewShift; window.capToggleArchive = capToggleArchive; window.capCloseView = capCloseView;
   window.openFile = openFile; window.createFile = createFile; window.saveFileNow = saveFileNow;
