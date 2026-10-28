@@ -480,7 +480,8 @@
           <div class="gbody">
             <div class="gh">Turn on sound</div>
             <div class="gt">Click the big button and you will hear a short beep. (Clicking anything on this page also does it.)
-              Do not want the alarm to make noise? Click Skip - the screens will still flash.</div>
+              Do not want the alarm to make noise? Click Skip - the screens still flash.
+              Either button may make Edge ask if this site can show notifications - click Allow, so a Windows pop-up appears on top of whatever you are doing when an alarm fires.</div>
             <button class="primary" onclick="guideSound()">Turn On Sound</button>
             <button onclick="guideSkipSound()">Skip - I do not want sound</button>
           </div>
@@ -1012,6 +1013,7 @@
     ensureAudio(); soundOn = true;
     if (!settings.sound) { settings.sound = true; saveSettings(); renderSettings(); }
     beep(880, 0.15); updateGuide();
+    requestNotify();   // Windows pop-up notifications always appear on top, even over other apps
   }
   var fileSkipped = false;
   function guideSkipFile() {
@@ -1021,6 +1023,8 @@
   }
   function guideSkipSound() {
     soundOn = true;                       // step is done either way
+    ensureAudio();                        // the click itself unlocks the browser; keep that
+    requestNotify();                      // still ask for Windows notifications
     if (settings.sound) { settings.sound = false; saveSettings(); renderSettings(); }
     document.getElementById('status').textContent = 'Siren OFF - screens will still flash. Use the SOUND button at the top to turn it back on.';
     updateGuide();
@@ -1573,6 +1577,7 @@
     }
   }
   var seenNotes = [];
+  var sNextAt = 0, sNextTitle = '', sNextSeen = false;   // sentinel: next alarm, sent by the main page
   function handleMsg(msg) {
     if (!msg || !msg.type) return;
     if (msg.type === 'fire') {
@@ -1590,13 +1595,7 @@
     } else if (msg.type === 'snooze') {
       if (SENTINEL) hideOverlay(); else snoozeAll(msg.mins || 5);
     } else if (msg.type === 'next') {
-      if (SENTINEL) {
-        var nx = document.getElementById('sNext');
-        if (nx) {
-          if (msg.cd) nx.innerHTML = 'next <b>' + esc(msg.cd) + '</b> - ' + esc(msg.title || '');
-          else nx.textContent = esc(msg.text || '');
-        }
-      }
+      if (SENTINEL) { sNextSeen = true; sNextAt = msg.at || 0; sNextTitle = msg.title || ''; }
     } else if (msg.type === 'notes') {
       if (!SENTINEL) jumpToNotes();
     } else if (msg.type === 'quick') {
@@ -1648,12 +1647,16 @@
       var trig = a.at - (a.pre || 0) * 60000;
       if (!best || trig < bestAt) { best = a; bestAt = trig; }
     }
-    return best ? { cd: countdown(bestAt), title: best.title.replace(/ \(snoozed\)$/, '') } : null;
+    return best ? { at: bestAt, title: best.title.replace(/ \(snoozed\)$/, '') } : null;
   }
+  var lastNextKey = '', lastNextPush = 0;
   function pushNextToSentinels() {
     var n = nextAlarm();
-    var m = JSON.stringify(n ? { type: 'next', cd: n.cd, title: n.title, src: 'occDeskAlarm', ts: Date.now() }
-                             : { type: 'next', text: 'no reminders', src: 'occDeskAlarm', ts: Date.now() });
+    var key = n ? n.at + '|' + n.title : 'none';
+    if (key === lastNextKey && Date.now() - lastNextPush < 5000) return;   // resend every 5 s so a reopened window catches up
+    lastNextKey = key; lastNextPush = Date.now();
+    var m = JSON.stringify(n ? { type: 'next', at: n.at, title: n.title, src: 'occDeskAlarm', ts: Date.now() }
+                             : { type: 'next', at: 0, title: '', src: 'occDeskAlarm', ts: Date.now() });
     for (var i = 0; i < sentinels.length; i++) {
       try { if (sentinels[i] && !sentinels[i].closed) sentinels[i].postMessage(m, '*'); } catch (e) {}
     }
@@ -1662,6 +1665,22 @@
     var n = 0;
     for (var i = 0; i < sentinels.length; i++) if (sentinels[i] && !sentinels[i].closed) n++;
     return n;
+  }
+
+  // ---------- Unthrottled 1-second ticker ----------
+  // Browsers slow a hidden tab's timers to once a minute after a few minutes. A Web Worker's
+  // timer is not throttled, so the worker pings us every second and we do the work here.
+  function startTicker(fn) {
+    var started = false;
+    try {
+      var src = 'setInterval(function(){postMessage(1)},1000);';
+      var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      w.onmessage = function () { fn(); };
+      started = true;
+    } catch (e) {}
+    if (!started) setInterval(fn, 1000);
+    // also run at once whenever the page becomes visible again
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) fn(); });
   }
 
   // ---------- Overlay ----------
@@ -2747,7 +2766,7 @@
     function openOne(i, left, top) {
       var feat = 'popup=yes,width=420,height=260,left=' + left + ',top=' + top + ',menubar=no,toolbar=no,location=no,status=no';
       var w = window.open(url, 'occSentinel' + i, feat);
-      if (w) { opened++; sentinels[i] = w; }
+      if (w) { opened++; sentinels[i] = w; lastNextKey = ''; setTimeout(pushNextToSentinels, 1200); }
     }
     // Try Window Management API to place one per screen automatically
     if (window.getScreenDetails) {
@@ -2776,12 +2795,18 @@
     if (SENTINEL) {
       document.body.className = 'sentinel';
       document.title = 'ALERT WINDOW';
-      setInterval(function () {
+      startTicker(function () {
         document.getElementById('sClock').textContent = fmtZ(new Date()) + 'Z';
         var ok = false;
         try { ok = !!(window.opener && !window.opener.closed); } catch (e) {}
         document.getElementById('sStatus').textContent = ok ? 'Linked to Desk Log' : 'LOST LINK - close me and click Open Alert Windows again';
-      }, 1000);
+        // count down to the next alarm locally so it runs smoothly even if the main page is throttled
+        var nx = document.getElementById('sNext');
+        if (nx) {
+          if (sNextAt) nx.innerHTML = 'next <b>' + esc(countdown(sNextAt)) + '</b> - ' + esc(sNextTitle);
+          else if (sNextSeen) nx.textContent = 'no reminders';
+        }
+      });
       document.addEventListener('click', ensureAudio);
       return;
     }
@@ -2810,7 +2835,7 @@
     setDefaultTime();
     catChanged();
     render();
-    setInterval(tick, 1000);
+    startTicker(tick);
     document.addEventListener('click', function () {
       ensureAudio();
       document.getElementById('audioHint').textContent = 'Sound enabled.';
