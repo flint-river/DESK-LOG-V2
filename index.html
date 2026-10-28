@@ -242,6 +242,9 @@
   body.parked #sentinelIdle { flex-direction: row; gap: 10px; padding: 0 8px; white-space: nowrap; }
   body.parked #sentinelIdle .t { font-size: 13px; margin: 0; }
   body.parked #sentinelIdle .c { font-size: 15px; margin: 0; }
+  #sentinelIdle .nx { font-size: 14px; color: var(--text); margin: 4px 0 2px 0; }
+  #sentinelIdle .nx b { color: var(--warn); }
+  body.parked #sentinelIdle .nx { font-size: 12px; margin: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   body.parked #sentinelIdle .d, body.parked #sentinelIdle #sStatus { display: none; }
   #sentinelIdle .snote { margin-top: 10px; }
   #sNotePanel { display: none; height: 100%; flex-direction: column; padding: 12px; }
@@ -616,6 +619,7 @@
   <div class="t">ALERT WINDOW</div>
   <div class="d">Drag me onto a monitor and leave me open.<br>I will grow to fill this monitor when an alarm fires,<br>then shrink to a small tab in the corner after you acknowledge.</div>
   <div class="c" id="sClock">--:--:--</div>
+  <div class="nx" id="sNext"></div>
   <button class="small primary snote" onclick="sentinelNotes()" title="Write a quick note here; it goes into the shift log on the main page">Notes</button>
   <div id="sStatus">Linked to Desk Log</div>
 </div>
@@ -1365,7 +1369,7 @@
   // ---------- Settings: sound on/off and alert color (saved in this browser) ----------
   var SET_KEY = 'occDeskAlarmSettings';
   // Defaults for a brand-new user. A person's saved file overrides these.
-  var settings = { sound: true, palette: 'red', keepFront: true, leftClosed: true, windows: 1, backdrop: '', backdropDim: 45, padLogAcks: true };
+  var settings = { sound: true, palette: 'red', keepFront: true, windows: 1, backdrop: '', backdropDim: 45, padLogAcks: true };
   var PALETTES = {
     red:     { name: 'Red / White (default)', a1: '#b00000', a2: '#ffffff' },
     orange:  { name: 'Orange / Black',        a1: '#ff6a00', a2: '#000000' },
@@ -1384,7 +1388,6 @@
     if (typeof s.sound === 'boolean') settings.sound = s.sound;
     if (PALETTES[s.palette]) settings.palette = s.palette;
     if (typeof s.keepFront === 'boolean') settings.keepFront = s.keepFront;
-    if (typeof s.leftClosed === 'boolean') settings.leftClosed = s.leftClosed;
     var w = parseInt(s.windows, 10); if (w >= 1 && w <= 6) settings.windows = w;
     if (typeof s.backdrop === 'string' && (s.backdrop === '' || s.backdrop.indexOf('data:image/') === 0)) settings.backdrop = s.backdrop;
     var bd = parseInt(s.backdropDim, 10); if (bd >= 10 && bd <= 100) settings.backdropDim = bd;
@@ -1453,7 +1456,7 @@
     var kf = document.getElementById('fKeepFront'); if (kf) kf.checked = settings.keepFront;
     var fw = document.getElementById('fWin'); if (fw) fw.value = settings.windows;
     var gw = document.getElementById('gWin'); if (gw) gw.value = settings.windows;
-    if (typeof setLeft === 'function' && document.getElementById('collapseBtn')) setLeft(settings.leftClosed);
+
     applyPalette(settings.palette);
     applyBackdrop();
     var pl = document.getElementById('padLogAcks'); if (pl) pl.checked = settings.padLogAcks;
@@ -1551,6 +1554,14 @@
       if (SENTINEL) hideOverlay(); else ackAll();
     } else if (msg.type === 'snooze') {
       if (SENTINEL) hideOverlay(); else snoozeAll(msg.mins || 5);
+    } else if (msg.type === 'next') {
+      if (SENTINEL) {
+        var nx = document.getElementById('sNext');
+        if (nx) {
+          if (msg.cd) nx.innerHTML = 'next <b>' + esc(msg.cd) + '</b> - ' + esc(msg.title || '');
+          else nx.textContent = esc(msg.text || '');
+        }
+      }
     } else if (msg.type === 'notes') {
       if (!SENTINEL) jumpToNotes();
     } else if (msg.type === 'note') {
@@ -1573,7 +1584,7 @@
     } catch (e) {}
   }
   // Sentinel: collapse to a small strip in the bottom-right corner of its monitor
-  var PARK_W = 280, PARK_H = 46;
+  var PARK_W = 420, PARK_H = 46;
   function shrinkBack() {
     try {
       var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
@@ -1582,6 +1593,25 @@
       window.moveTo(l + screen.availWidth - PARK_W - 10, t + screen.availHeight - PARK_H - 10);
       document.body.className = 'sentinel parked';
     } catch (e) {}
+  }
+  // Next thing that will actually fire (not muted, in season), as text for the alert windows
+  function nextAlarm() {
+    var best = null, bestAt = 0;
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (a.muted || a.fired || !inSeason(a, a.at)) continue;
+      var trig = a.at - (a.pre || 0) * 60000;
+      if (!best || trig < bestAt) { best = a; bestAt = trig; }
+    }
+    return best ? { cd: countdown(bestAt), title: best.title.replace(/ \(snoozed\)$/, '') } : null;
+  }
+  function pushNextToSentinels() {
+    var n = nextAlarm();
+    var m = JSON.stringify(n ? { type: 'next', cd: n.cd, title: n.title, src: 'occDeskAlarm', ts: Date.now() }
+                             : { type: 'next', text: 'no reminders', src: 'occDeskAlarm', ts: Date.now() });
+    for (var i = 0; i < sentinels.length; i++) {
+      try { if (sentinels[i] && !sentinels[i].closed) sentinels[i].postMessage(m, '*'); } catch (e) {}
+    }
   }
   function liveSentinels() {
     var n = 0;
@@ -1657,6 +1687,7 @@
     document.getElementById('winCount').textContent = liveSentinels() + ' alert window(s) connected';
     updateGuide();
     qTick();
+    pushNextToSentinels();
     var changed = false;
     for (var i = alarms.length - 1; i >= 0; i--) {
       var a = alarms[i];
@@ -2310,11 +2341,7 @@
     document.body.classList.toggle('leftclosed', closed);
     document.getElementById('collapseBtn').innerHTML = closed ? '&gt;&gt;' : '&lt;&lt; Hide';
   }
-  function toggleLeft() {
-    setLeft(!leftClosed);
-    settings.leftClosed = leftClosed;
-    saveSettings();
-  }
+  function toggleLeft() { setLeft(!leftClosed); }
   function findAlarm(id) {
     for (var i = 0; i < alarms.length; i++) if (alarms[i].id === id) return alarms[i];
     return null;
@@ -2685,6 +2712,8 @@
     capsSetupDrop();
     padAutoArchive(); capAutoArchive();
     setInterval(function () { padAutoArchive(); capAutoArchive(); }, 3600000);
+    setLeft(true);        // always launch with the edit form collapsed
+    showTab('alarms');    // and on the Alarms tab
     qReset();
     setTz('L');
     setDefaultTime();
