@@ -1,0 +1,2697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Log</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2129;
+    --panel2: #222c36;
+    --border: #2e3a47;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #3fa7ff;
+    --ok: #2ecc71;
+    --warn: #f1c40f;
+    --danger: #e74c3c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  /* ---------- Layout ---------- */
+  #app { display: flex; flex-direction: column; height: 100%; }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 1px; }
+  header .clocks { margin-left: auto; margin-right: auto; display: flex; align-items: baseline; gap: 8px; }
+  header .clocks .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+  header .clocks .lbl + .clock { margin-right: 18px; }
+  header .clock { font-size: 22px; color: var(--accent); }
+  header .clock.z { color: var(--warn); }
+  header .status { font-size: 12px; color: var(--muted); min-width: 180px; }
+  header .spacer { margin-left: auto; min-width: 180px; }
+  header .userbox { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  header .userbox .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+  header .userbox select { width: auto; padding: 4px 6px; font-size: 13px; }
+  .hours { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 6px; }
+  .hours button { padding: 4px 0; font-size: 12px; }
+  .hours button.sel { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
+  .months { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 6px; }
+  .months button { padding: 5px 0; font-size: 12px; }
+  .months button.sel { background: var(--ok); color: #000; border-color: var(--ok); font-weight: bold; }
+  tr.offseason td { opacity: 0.6; }
+  tr.onetime td { background: rgba(63, 167, 255, 0.14); }
+  tr.onetime td:first-child { border-left: 4px solid var(--accent); }
+  tr.onetime.soon td { background: rgba(241, 196, 15, 0.22); }
+  tr.onetime.due td { background: rgba(231, 76, 60, 0.28); }
+  .quickadd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; margin-bottom: 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; }
+  .quickadd .qlbl { font-size: 12px; letter-spacing: 1px; color: var(--accent); font-weight: bold; margin-right: 4px; }
+  .quickadd input { flex: 1 1 220px; min-width: 160px; }
+  .quickadd .qtime { font-size: 18px; color: var(--accent); min-width: 150px; text-align: center; }
+  .quickadd .qtime .z { color: var(--warn); font-size: 13px; }
+  .bucket { font-size: 12px; letter-spacing: 1px; color: var(--muted); padding: 10px 0 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+  .bucket.clickable { cursor: pointer; color: var(--accent); margin-top: 14px; user-select: none; }
+  .bucket.clickable:hover { color: var(--text); }
+  tr.muted td { opacity: 0.45; }
+  tr.muted td .tag { filter: grayscale(1); }
+  button.on { background: var(--warn); color: #000; border-color: var(--warn); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .nowline { font-size: 12px; margin: 14px 0 -6px 0; padding: 6px 8px; background: var(--panel2); border-radius: 4px; }
+  .nowline b { color: var(--accent); }
+  .nowline b.z { color: var(--warn); }
+  .nowline .fz { float: right; color: var(--muted); }
+  .firebox { display: flex; flex-direction: column; gap: 6px; }
+  .firebox .fr { display: flex; align-items: center; gap: 10px; }
+  .firebox .lbl { width: 52px; font-size: 11px; letter-spacing: 1px; color: var(--accent); }
+  .firebox .lbl.z { color: var(--warn); }
+  .firebox .hhmm { width: 110px; font-size: 22px; letter-spacing: 3px; text-align: center; color: var(--accent); }
+  .firebox .hhmm.z { color: var(--warn); }
+  .firebox .fdate { font-size: 12px; color: var(--muted); }
+
+  main { display: flex; flex: 1; min-height: 0; }
+  .col { padding: 14px 16px; overflow: auto; }
+  .left { width: 400px; min-width: 340px; border-right: 1px solid var(--border); background: var(--panel); position: relative; }
+  .left .collapse { position: absolute; top: 10px; right: 10px; }
+  body.leftclosed .left { width: 44px; min-width: 44px; padding: 10px 6px; overflow: hidden; }
+  body.leftclosed .left > *:not(.collapse):not(.railtxt) { display: none !important; }
+  .railtxt { display: none; writing-mode: vertical-rl; transform: rotate(180deg); color: var(--muted); font-size: 12px; letter-spacing: 2px; margin-top: 50px; cursor: pointer; }
+  body.leftclosed .railtxt { display: block; }
+  .right { flex: 1; }
+  .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin: -14px -16px 14px -16px; padding: 10px 16px 0 16px; position: sticky; top: -14px; z-index: 5; background: var(--bg); }
+  .tabs .tab { font-size: 14px; letter-spacing: 1px; padding: 8px 22px; border: 1px solid var(--border); border-bottom: none; border-radius: 6px 6px 0 0; background: var(--panel); color: var(--muted); }
+  .tabs .tab.sel { background: var(--accent); color: #000; font-weight: bold; border-color: var(--accent); }
+  .tabs .tab .tcount { font-size: 11px; opacity: 0.8; }
+  .capdrop { border: 2px dashed var(--accent); border-radius: 6px; padding: 22px; text-align: center; background: var(--panel); cursor: pointer; outline: none; }
+  .capdrop:focus { border-style: solid; background: var(--panel2); }
+  .capdrop .capbig { font-size: 16px; font-weight: bold; color: var(--accent); letter-spacing: 1px; }
+  .capgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .cap { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+  .cap img { width: 100%; height: 160px; object-fit: cover; border-radius: 4px; cursor: zoom-in; background: #000; }
+  .cap .capt { font-size: 12px; margin-top: 6px; }
+  .cap .capt b { color: var(--accent); }
+  .cap .capbtns { display: flex; gap: 6px; margin-top: 6px; }
+  #help { display: none; position: fixed; inset: 0; z-index: 9997; background: var(--bg); color: var(--text); flex-direction: column; }
+  #help.show { display: flex; }
+  .helpbar { display: flex; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); font-weight: bold; letter-spacing: 1px; }
+  .helpwrap { display: flex; flex: 1; min-height: 0; }
+  .helpnav { width: 240px; min-width: 200px; border-right: 1px solid var(--border); padding: 12px; overflow: auto; background: var(--panel); }
+  .helpnav a { display: block; color: var(--accent); text-decoration: none; padding: 5px 4px; font-size: 13px; border-radius: 3px; }
+  .helpnav a:hover { background: var(--panel2); }
+  .helpbody { flex: 1; overflow: auto; padding: 10px 28px 40px 28px; max-width: 980px; font-size: 14px; line-height: 1.6; }
+  .helpbody h3 { color: var(--accent); margin: 26px 0 6px 0; font-size: 16px; letter-spacing: 1px; scroll-margin-top: 10px; }
+  .helpbody p { margin: 6px 0; }
+  .helpbody ul, .helpbody ol { margin: 6px 0 6px 22px; padding: 0; }
+  .helpbody li { margin: 4px 0; }
+  .helpbody b { color: var(--text); }
+  #capView { display: none; position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.92); flex-direction: column; align-items: center; justify-content: center; cursor: zoom-out; padding: 20px; }
+  #capView.show { display: flex; }
+  #capView img { max-width: 96vw; max-height: 84vh; object-fit: contain; }
+  #capView .capviewcap { color: #fff; font-size: 15px; margin-top: 10px; }
+  #paneNotes textarea { width: 100%; font-size: 13px; line-height: 1.5; resize: vertical; }
+  #paneNotes textarea.entry { min-height: 80px; border-color: var(--accent); font-size: 14px; }
+  #paneNotes #padText { min-height: 340px; }
+  .arch { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+  .arch .ah { font-size: 12px; color: var(--accent); cursor: pointer; padding: 4px 0; }
+  .arch pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); margin: 0 0 8px 0; max-height: 200px; overflow: auto; }
+
+  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px 0; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px 0; }
+  input, select, textarea, button {
+    font-family: inherit; font-size: 14px;
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 7px 9px; width: 100%;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  button { cursor: pointer; width: auto; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
+  button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  button.small { font-size: 12px; padding: 4px 8px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .quick button { font-size: 12px; padding: 4px 8px; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .sub { display: none; margin-top: 8px; padding: 4px 10px 10px 10px; border-left: 3px solid var(--ok); background: var(--panel2); border-radius: 0 4px 4px 0; }
+  .sub.open { display: block; }
+  .sub label { margin-top: 8px; }
+  .tag.flight { background: var(--ok); }
+
+  .bnote { background: var(--warn); color: #000; text-align: center; font-weight: bold; padding: 5px 10px; font-size: 13px; }
+  .bnote.bad { background: var(--danger); color: #fff; font-size: 15px; padding: 10px; }
+
+  /* ---------- Start Here guide ---------- */
+  #guide { border: 2px solid var(--accent); border-radius: 6px; padding: 12px 14px; margin-bottom: 18px; background: var(--panel); }
+  #guide.hidden { display: none; }
+  #guide .gtitle { font-size: 15px; font-weight: bold; letter-spacing: 1px; color: var(--accent); margin: -12px -14px 10px -14px; padding: 10px 14px; cursor: pointer; user-select: none; border-radius: 4px 4px 0 0; }
+  #guide .gtitle:hover { background: var(--panel2); }
+  #guide .gstep { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); }
+  #guide .gnum { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #000; font-weight: bold; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #guide .gbody { flex: 1; }
+  #guide .gh { font-size: 15px; font-weight: bold; margin-bottom: 4px; }
+  #guide .gt { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
+  #guide .gbody button { font-size: 14px; padding: 9px 16px; }
+  #guide .gdone { width: 70px; text-align: right; font-weight: bold; color: var(--ok); flex-shrink: 0; padding-top: 6px; }
+  #guide .gstep.done .gnum { background: var(--ok); }
+  #guide .gstep.done .gh { color: var(--ok); }
+  #guide .gstep.skipped .gnum { background: var(--warn); }
+  #guide .gstep.skipped .gh { color: var(--warn); }
+  #guide .gstep.skipped .gdone { color: var(--warn); }
+
+  /* ---------- Alarm list ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  tr.due td { background: rgba(231, 76, 60, 0.15); }
+  tr.soon td { background: rgba(241, 196, 15, 0.12); }
+  .tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; color: #000; }
+  .tag.call { background: var(--accent); }
+  .tag.ops { background: var(--danger); color: #fff; }
+  .tag.wx { background: var(--warn); }
+  .tag.other { background: var(--muted); }
+  .tag.flt { background: var(--ok); margin-top: 4px; white-space: nowrap; }
+  .notes { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+  .countdown { font-weight: bold; }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+
+  /* ---------- Fired overlay ---------- */
+  #overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 40px;
+    --a1: #b00000;   /* alert color */
+    --a2: #ffffff;   /* flash / text color */
+    background: var(--a1);
+    color: var(--a2);
+  }
+  #overlay.show { display: flex; }
+  #overlay > * { position: relative; z-index: 1; }
+  #oBack { position: absolute !important; inset: 0; z-index: 0 !important; background-size: cover; background-position: center; opacity: 0; pointer-events: none; }
+  #overlay.flash #oBack { animation: backflash 0.6s steps(2, start) infinite; }
+  @keyframes backflash { 0% { opacity: var(--bo, 0.45); } 100% { opacity: calc(var(--bo, 0.45) * 0.5); } }
+  #overlay .big, #overlay .mid, #overlay .small { text-shadow: 0 0 12px #000, 0 0 4px #000; }
+  #overlay.flash { animation: flash 0.6s steps(2, start) infinite; }
+  @keyframes flash {
+    0%   { background: var(--a1); color: var(--a2); }
+    100% { background: var(--a2); color: var(--a1); }
+  }
+  .swatch { display: inline-block; width: 18px; height: 18px; border: 1px solid #fff; vertical-align: middle; margin-left: 6px; }
+  #overlay .big { font-size: 7vw; font-weight: bold; letter-spacing: 2px; line-height: 1.1; word-break: break-word; }
+  #overlay .mid { font-size: 3vw; margin-top: 20px; }
+  #overlay .small { font-size: 1.6vw; margin-top: 16px; white-space: pre-wrap; max-width: 80vw; opacity: 0.9; }
+  #overlay .btns { margin-top: 40px; display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  #overlay button {
+    font-size: 1.6vw; padding: 14px 28px; border: 3px solid var(--a2);
+    background: #000; color: #fff; border-radius: 6px;
+  }
+  #overlay button.ack { background: var(--a2); color: var(--a1); font-weight: bold; }
+
+  /* ---------- Sentinel (helper window) mode ---------- */
+  body.sentinel #app { display: none; }
+  #sentinelIdle {
+    display: none; height: 100%;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 20px; color: var(--muted);
+  }
+  body.sentinel #sentinelIdle { display: flex; }
+  #sentinelIdle .t { font-size: 20px; color: var(--text); margin-bottom: 10px; }
+  #sentinelIdle .c { font-size: 32px; color: var(--accent); margin: 10px 0; }
+  /* parked: tiny strip in the corner after acknowledge */
+  body.parked #sentinelIdle { flex-direction: row; gap: 10px; padding: 0 8px; white-space: nowrap; }
+  body.parked #sentinelIdle .t { font-size: 13px; margin: 0; }
+  body.parked #sentinelIdle .c { font-size: 15px; margin: 0; }
+  body.parked #sentinelIdle .d, body.parked #sentinelIdle #sStatus { display: none; }
+  #sentinelIdle .snote { margin-top: 10px; }
+  #sNotePanel { display: none; height: 100%; flex-direction: column; padding: 12px; }
+  body.noting #sentinelIdle { display: none !important; }
+  body.noting #sNotePanel { display: flex; }
+  #sNotePanel .t { font-size: 16px; font-weight: bold; color: var(--accent); margin-bottom: 8px; }
+  #sNotePanel textarea { flex: 1; min-height: 120px; font-size: 15px; line-height: 1.5; resize: none; border-color: var(--accent); }
+  body.parked #sentinelIdle .snote { margin: 0; padding: 3px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="browserNote" class="bnote">Works in Microsoft Edge and Google Chrome only. Please open this page in one of those.</div>
+  <header>
+    <h1>DESK LOG</h1>
+    <span class="status" id="status">Loading...</span>
+    <button class="small on" id="soundBtn" onclick="toggleSound()" title="Turn the alarm siren on or off (screens still flash)">SOUND: ON</button>
+    <button class="small" onclick="openHelp()" title="How everything on this page works">HELP</button>
+    <span class="clocks">
+      <span class="lbl">LOCAL</span><span class="clock" id="clock">--:--:--</span>
+      <span class="lbl">ZULU</span><span class="clock z" id="clockZ">--:--:--</span>
+    </span>
+    <span class="spacer"></span>
+  </header>
+  <main>
+    <section class="col left">
+      <button class="small collapse" id="collapseBtn" onclick="toggleLeft()" title="Hide the form to give the reminder list the whole screen">&lt;&lt; Hide</button>
+      <div class="railtxt" onclick="toggleLeft()">CLICK TO OPEN THE EDIT FORM</div>
+      <h2 id="formTitle">New Reminder</h2>
+      <div class="hint" style="margin:0 0 6px 0">Fill in only what you have. Everything is optional.</div>
+      <label>Category</label>
+      <select id="fCat" onchange="catChanged()">
+        <option value="flight">Flight</option>
+        <option value="call">Conference call</option>
+        <option value="ops">Operational issue</option>
+        <option value="wx">Weather / ATC</option>
+        <option value="other">Other</option>
+      </select>
+      <div id="fltBox" class="sub">
+      <label>Flight category</label>
+      <select id="fFlt">
+        <option value="">Not specified</option>
+        <option value="DIV">Diversion</option>
+        <option value="DLY">Delay</option>
+        <option value="CNL">Cancel</option>
+        <option value="MX">Maintenance / AOG</option>
+        <option value="CREW">Crew / Duty time</option>
+        <option value="FUEL">Fuel / Tankering</option>
+        <option value="WX">Weather hold</option>
+        <option value="ATC">ATC / GDP / GS / AFP</option>
+        <option value="DEICE">Deice</option>
+        <option value="GATE">Gate / Ramp</option>
+        <option value="INTL">International / CBP</option>
+        <option value="VIP">VIP / Charter / Sports</option>
+        <option value="MED">Medical</option>
+        <option value="SWAP">Equipment swap</option>
+        <option value="OTHER">Other</option>
+      </select>
+      <div class="row">
+        <div>
+          <label>Flight number</label>
+          <input id="fFltNo" placeholder="DL1234">
+        </div>
+        <div>
+          <label>Tail / ship</label>
+          <input id="fTail" placeholder="N123DN / 3401">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Origin</label>
+          <input id="fOrig" placeholder="ATL" maxlength="4">
+        </div>
+        <div>
+          <label>Destination</label>
+          <input id="fDest" placeholder="LGA" maxlength="4">
+        </div>
+      </div>
+      </div>
+      <label>Title (shown huge when it fires - blank = built from the fields above)</label>
+      <input id="fTitle" placeholder="e.g. ATCSCC planning telcon">
+      <label>Notes (bridge number, who to call, what to check)</label>
+      <textarea id="fNotes"></textarea>
+      <div class="nowline">NOW <b id="nowL">----</b>L / <b class="z" id="nowZ">----</b>Z <span class="fz" id="fireIn"></span></div>
+      <label>Fire at (24-hour HH:MM, type in either box)</label>
+      <div class="row" style="margin-bottom:6px; align-items:center">
+        <span class="hint" style="margin:0; flex:0 0 auto">Which clock controls:</span>
+        <button class="small" id="tzL" onclick="setTz('L')" title="Keep the LOCAL time fixed. When the clocks change, the Zulu time moves.">LOCAL</button>
+        <button class="small" id="tzZ" onclick="setTz('Z')" title="Keep the ZULU time fixed. When the clocks change, the local time moves.">ZULU</button>
+        <span class="hint" id="tzHint" style="margin:0; flex:1 1 auto"></span>
+      </div>
+      <div class="firebox">
+        <div class="fr"><span class="lbl">DATE</span><input id="fDate" type="date" style="width:170px" onchange="dateTyped()" title="Local date. Leave as today for normal use; pick a later date for a one-time reminder in the future"><span class="fdate" id="fDateHint">local date</span></div>
+        <div class="fr"><span class="lbl">LOCAL</span><input id="fLocal" class="hhmm" maxlength="5" placeholder="HH:MM" onchange="localTyped()" onkeydown="if(event.key==='Enter'){this.blur();}"><span class="fdate" id="fDateL"></span></div>
+        <div class="fr"><span class="lbl z">ZULU</span><input id="fZulu" class="hhmm z" maxlength="5" placeholder="HH:MM" onchange="zuluTyped()" onkeydown="if(event.key==='Enter'){this.blur();}"><span class="fdate" id="fDateZ"></span></div>
+      </div>
+      <div class="quick">
+        <button onclick="nudge(-60)">-1 hr</button>
+        <button onclick="nudge(-30)">-30</button>
+        <button onclick="nudge(-15)">-15</button>
+        <button onclick="nudge(-10)">-10</button>
+        <button onclick="nudge(-5)">-5</button>
+        <button onclick="nudge(-1)">-1</button>
+        <button class="primary" onclick="setDefaultTime()">NOW+5</button>
+        <button onclick="nudge(1)">+1</button>
+        <button onclick="nudge(5)">+5</button>
+        <button onclick="nudge(10)">+10</button>
+        <button onclick="nudge(15)">+15</button>
+        <button onclick="nudge(30)">+30</button>
+        <button onclick="nudge(60)">+1 hr</button>
+      </div>
+      <label>Hour (local, sets HH:00 - then nudge the minutes)</label>
+      <div class="hours" id="hourGrid"></div>
+      <div class="quick">
+        <button onclick="quickAt(15)">next :15</button>
+        <button onclick="quickAt(30)">next :30</button>
+        <button onclick="quickAt(45)">next :45</button>
+        <button onclick="quickAt(0)">next top of hour</button>
+      </div>
+      <label>Early alarm (minutes before the alarm time, 0 = none)</label>
+      <input id="fPre" type="number" min="0" value="5">
+      <label>Repeat</label>
+      <select id="fRepeat">
+        <option value="none">One time</option>
+        <option value="m15">Every 15 minutes</option>
+        <option value="m30">Every 30 minutes</option>
+        <option value="hourly">Every hour</option>
+        <option value="h2">Every 2 hours</option>
+        <option value="h3">Every 3 hours</option>
+        <option value="h4">Every 4 hours</option>
+        <option value="h6">Every 6 hours</option>
+        <option value="h8">Every 8 hours</option>
+        <option value="h12">Every 12 hours</option>
+        <option value="daily">Daily</option>
+        <option value="weekdays">Weekdays (Mon-Fri)</option>
+        <option value="weekends">Weekends (Sat-Sun)</option>
+        <option value="weekly">Weekly (same day)</option>
+        <option value="biweekly">Every 2 weeks</option>
+        <option value="monthly">Monthly (same date)</option>
+        <option value="bimonthly">Every 2 months</option>
+        <option value="quarterly">Quarterly</option>
+        <option value="semiannual">Every 6 months</option>
+        <option value="yearly">Yearly</option>
+      </select>
+      <label>Seasonal - only fire in these months (all checked = all year)</label>
+      <div class="months" id="monthGrid"></div>
+      <div class="row" style="margin-top:4px">
+        <button class="small" onclick="setMonths('all')">All year</button>
+        <button class="small" onclick="setMonths('winter')">Oct - Apr</button>
+        <button class="small" onclick="setMonths('summer')">May - Sep</button>
+        <button class="small" onclick="setMonths('none')">Clear</button>
+      </div>
+      <label>Or exact season dates (every year, year part is ignored)</label>
+      <div class="row" style="align-items:center">
+        <span class="hint" style="margin:0; flex:0 0 auto">From</span>
+        <input id="fSeasonFrom" type="date" onchange="seasonDatesChanged()">
+        <span class="hint" style="margin:0; flex:0 0 auto">to</span>
+        <input id="fSeasonTo" type="date" onchange="seasonDatesChanged()">
+        <button class="small" onclick="clearSeasonDates()" style="flex:0 0 auto">Clear</button>
+      </div>
+      <div class="hint" id="seasonHint"></div>
+      <div class="actions">
+        <button class="primary" id="addBtn" onclick="addAlarm()">Add Reminder</button>
+        <button id="cancelBtn" onclick="cancelEdit()" style="display:none">Cancel Edit</button>
+        <button onclick="testAlarm()">Test Alarm</button>
+      </div>
+
+      <h2 style="margin-top:28px">Multi-Monitor Alert Windows</h2>
+      <div class="row">
+        <input id="fWin" type="number" min="1" max="6" value="1" title="Number of alert windows (one per monitor)">
+        <button onclick="openSentinels()">Open Alert Windows</button>
+      </div>
+      <div class="hint" id="winCount" style="color:var(--accent)">0 alert window(s) connected</div>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+        <input type="checkbox" id="fKeepFront" onchange="keepFrontChanged()" style="width:auto">
+        Keep pulling alert windows to the front while alarming
+      </label>
+      <div class="hint" style="margin-top:0">A web page cannot pin a window on top for good, but while an alarm is live it can
+        bring the alert windows back in front every second so they do not get buried.</div>
+      <label>Backdrop picture on the alert screen (optional)</label>
+      <div class="row" style="align-items:center">
+        <input type="file" id="fBackdrop" accept="image/*" onchange="backdropPicked(this)" style="font-size:12px">
+        <button class="small" onclick="clearBackdrop()" style="flex:0 0 auto">Remove</button>
+      </div>
+      <div class="row" style="align-items:center; margin-top:6px">
+        <span class="hint" style="margin:0; flex:0 0 auto">Picture brightness</span>
+        <input type="range" id="fBackdropDim" min="10" max="100" value="45" oninput="backdropDimChanged(this.value)" style="padding:0">
+        <span class="hint" id="backdropInfo" style="margin:0; flex:1 1 auto">No picture</span>
+      </div>
+      <label>Alert color (what every screen flashes)</label>
+      <div class="row">
+        <select id="fPalette" onchange="paletteChanged()"></select>
+        <span style="flex:0 0 auto; align-self:center"><span class="swatch" id="sw1"></span><span class="swatch" id="sw2"></span></span>
+        <button class="small" onclick="previewPalette()" style="flex:0 0 auto">Preview</button>
+      </div>
+      <div class="hint">
+        Starts at 1. Set it to the number of monitors you want covered (4 screens = 4). Small alert
+        windows open; drag one onto each monitor, including this one, and leave
+        it. When an alarm fires every alert window grows to cover its whole
+        monitor, flashing and beeping. ACKNOWLEDGE or Snooze on ANY screen clears
+        all of them and each one shrinks to a small tab in the corner of its
+        monitor. This page stays put as a normal tab.
+        If Edge blocks popups, allow them for this page once and click again.
+        Do not close the alert windows; if one gets closed, click Open again.
+      </div>
+      <div class="hint" id="audioHint">
+        Click anywhere on this page once after loading so Edge allows sound.
+      </div>
+    </section>
+
+    <section class="col right">
+      <div class="tabs">
+        <button class="tab sel" id="tabAlarms" onclick="showTab('alarms')">ALARMS</button>
+        <button class="tab" id="tabNotes" onclick="showTab('notes')">NOTES <span class="tcount" id="notesCount"></span></button>
+        <button class="tab" id="tabCaps" onclick="showTab('caps')">CAPTURES <span class="tcount" id="capsCount"></span></button>
+      </div>
+      <div id="paneAlarms">
+      <div class="bucket clickable" id="helpBtn" onclick="showGuide()" style="display:none; margin:0 0 14px 0">&#9654; START HERE - 4 quick steps (click to show)</div>
+      <div id="guide">
+        <div class="gtitle" onclick="hideGuide()" title="Click to hide these steps">START HERE - 4 quick steps every shift <span style="float:right; font-weight:normal">&#9650; click here to hide</span></div>
+        <div class="gstep" id="g1">
+          <div class="gnum">1</div>
+          <div class="gbody">
+            <div class="gh">Turn on sound</div>
+            <div class="gt">Click the big button and you will hear a short beep. (Clicking anything on this page also does it.)
+              Do not want the alarm to make noise? Click Skip - the screens will still flash.</div>
+            <button class="primary" onclick="guideSound()">Turn On Sound</button>
+            <button onclick="guideSkipSound()">Skip - I do not want sound</button>
+          </div>
+          <div class="gdone" id="g1d"></div>
+        </div>
+        <div class="gstep" id="g2">
+          <div class="gnum">2</div>
+          <div class="gbody">
+            <div class="gh">Open your reminders file</div>
+            <div class="gt">Your reminders are kept in a file on your I: drive called <b>desk-log-data.js</b>.
+              Click the button, find that file on your I: drive, and click Open.
+              <br>First time ever? Click <b>I do not have a file yet</b> instead and save the new file to your I: drive.
+              <br>Tip: in the file window, your I: drive is in the list on the left. It is named with your employee number,
+              like <b>840422$ (\\natladmhqrfs04) (I:)</b>. If the window opens somewhere else, click that one.</div>
+            <button class="primary" onclick="openFile()">Open My File (I: drive)</button>
+            <button onclick="createFile()">I do not have a file yet</button>
+            <button onclick="guideSkipFile()">Skip - just use the defaults today</button>
+            <div class="gt" style="margin-top:6px">Skip means: the standard team reminders and settings for today only. Anything you add or change is gone when you log off.</div>
+          </div>
+          <div class="gdone" id="g2d"></div>
+        </div>
+        <div class="gstep" id="g3">
+          <div class="gnum">3</div>
+          <div class="gbody">
+            <div class="gh">Put an alert window on every screen</div>
+            <div class="gt">Starts at 1 window. Want every screen covered? Type how many screens you have. Then click the button.
+              Small windows will pop up. Drag one onto each screen and leave them there.
+              <br>If nothing pops up, look for a blocked popup icon at the right end of the address bar, click it, choose Always allow, and click the button again.</div>
+            <div class="row" style="max-width:360px">
+              <input id="gWin" type="number" min="1" max="6" value="1" style="max-width:80px">
+              <button class="primary" onclick="guideWindows()">Open Alert Windows</button>
+            </div>
+          </div>
+          <div class="gdone" id="g3d"></div>
+        </div>
+        <div class="gstep" id="g4">
+          <div class="gnum">4</div>
+          <div class="gbody">
+            <div class="gh">Try it</div>
+            <div class="gt">Click Test. Every screen should flash and beep. Click the white ACKNOWLEDGE button on any screen to stop it. Snooze makes it come back in a few minutes.</div>
+            <button class="primary" onclick="guideTest()">Test Alarm</button>
+          </div>
+          <div class="gdone" id="g4d"></div>
+        </div>
+        <div class="gt" style="padding:6px 0 0 0">That is it. To add a reminder, use the form on the left: pick a category, set the time, click Add Reminder. The alarm only works while this page stays open, so do not close this tab.</div>
+      </div>
+      <h2>Scheduled Reminders</h2>
+      <div class="quickadd">
+        <span class="qlbl">QUICK ADD</span>
+        <input id="qTitle" placeholder="What is it? (e.g. Call back ZTL)" onkeydown="if(event.key==='Enter'){quickAdd();}">
+        <span class="qtime" id="qTime">--:--</span>
+        <button class="small" onclick="qPlus(1)">+1</button>
+        <button class="small" onclick="qPlus(5)">+5</button>
+        <button class="small" onclick="qPlus(15)">+15</button>
+        <button class="small" onclick="qSnap(15)">:15</button>
+        <button class="small" onclick="qSnap(30)">:30</button>
+        <button class="small" onclick="qSnap(45)">:45</button>
+        <button class="small" onclick="qSnap(0)">Next Hour</button>
+        <button class="small" onclick="qUndo()" title="Take back the last button press">Undo</button>
+        <button class="small" onclick="qReset()" title="Back to the current time">Reset</button>
+        <button class="primary" onclick="quickAdd()">ADD</button>
+      </div>
+      <div class="hint" style="margin:-8px 0 12px 0">One-time, on-time alarm. Buttons stack: click +5 three times for 15 minutes, :15 twice for the quarter-hour after next. Use Edit on the row afterwards for repeat, early alarm, flight details and so on. <span style="display:inline-block; width:12px; height:12px; background:rgba(63,167,255,0.5); border-left:3px solid var(--accent); vertical-align:middle"></span> One-time (ad hoc) alarms are shaded blue in the list.</div>
+      <div id="list"></div>
+      <h2 style="margin-top:22px">My Reminders File</h2>
+      <div class="hint" id="fileStatus" style="color:var(--warn); margin:0 0 6px 0">Not linked - reminders live only in this browser on this desk</div>
+      <div class="actions" style="margin-top:0">
+        <button class="small primary" onclick="openFile()">Open I: File</button>
+        <button class="small" onclick="createFile()">Create I: File</button>
+        <button class="small" onclick="saveFileNow()">Save Now</button>
+      </div>
+      <div class="hint">
+        Your reminders live in <b>desk-log-data.js</b> on your I: drive, which
+        follows you from desk to desk. First time: <b>Create I: File</b> and save
+        it to I:. Every shift after that, one click: <b>Open I: File</b> and pick
+        it (or drag the file from Explorer and drop it anywhere on this page).
+        That loads your list and links the file; from then on every add, dup,
+        mute, acknowledge and delete saves to it silently. Edge needs that one
+        approval per session; nothing else. Browser storage on the desk is only
+        a same-day backup.
+        Mute skips one occurrence only - a muted daily comes back unmuted tomorrow; repeating ones roll forward
+        quietly, one-time ones drop off when their time passes.
+      </div>
+      <div class="actions">
+        <button class="small" onclick="loadDefaults()" title="Add the standard team reminders (skips any you already have)">Load Defaults</button>
+        <button class="small danger" onclick="clearAll()" title="Delete every reminder in the list">Clear All</button>
+        <button class="small" onclick="toggleAdvanced()" id="advBtn" title="Copy / paste the list as text (backup if the file buttons are blocked)">Advanced</button>
+      </div>
+      <div id="advanced" style="display:none">
+        <div class="hint">Backup if the file buttons do not work on this computer, or to send your list to a coworker: Export copies the whole list as text; Import reads text pasted below.</div>
+        <div class="actions" style="margin-top:6px">
+          <button class="small" onclick="exportAlarms()">Export (copy text)</button>
+          <button class="small" onclick="importAlarms()">Import (paste text)</button>
+        </div>
+      </div>
+      <textarea id="io" style="margin-top:10px; display:none"></textarea>
+      </div>
+      <div id="paneNotes" style="display:none">
+      <h2>Shift Notepad</h2>
+      <div class="hint" style="margin:0 0 8px 0">Your running notes for this shift. Saved in your I: file as you type. Copy into your SOCR at end of shift.</div>
+      <textarea id="padEntry" class="entry" oninput="padEntryInput()" onkeydown="padEntryKey(event)" spellcheck="true" placeholder="Start typing a note - the date and time stamp themselves. Enter or Add saves it."></textarea>
+      <div class="actions" style="margin:6px 0 8px 0; flex-wrap:wrap">
+        <button class="small primary" onclick="padAddEntry()" title="Save this note to the log and start a new one">Add</button>
+        <button class="small" onclick="padStamp()" title="Insert another date/time stamp where the cursor is">+ Time Stamp</button>
+        <label class="hint" style="margin:0; display:flex; align-items:center; gap:4px; cursor:pointer"><input type="checkbox" id="padLogAcks" onchange="padSettingChanged()" style="width:auto"> log acked alarms</label>
+      </div>
+      <div class="row" style="align-items:center; margin:0 0 4px 0; justify-content:flex-start">
+        <button class="small primary" onclick="padUndo()" id="padUndoBtn" style="flex:0 0 auto" title="Put the log back the way it was before the last change (up to 50 steps)">Undo</button>
+        <button class="small" onclick="padRedo()" id="padRedoBtn" style="flex:0 0 auto" title="Redo what Undo took back">Redo</button>
+        <button class="small danger" onclick="padClearAll()" style="flex:0 0 auto; margin-left:8px" title="Wipe the shift log (asks first; Undo can still bring it back)">Clear All</button>
+        <span class="hint" style="margin:0 0 0 8px; flex:0 1 auto">Shift log (click a line to edit it)</span>
+      </div>
+      <textarea id="padText" oninput="padChanged()" onkeydown="padLogKey(event)" spellcheck="true" placeholder="Saved notes build up here, newest at the bottom."></textarea>
+      <div class="actions" style="margin-top:8px; flex-wrap:wrap">
+        <button class="small primary" onclick="padCopy()">Copy for SOCR</button>
+        <button class="small" onclick="padNewShift()" title="Move today's notes to the archive and start a blank pad">New Shift (archive)</button>
+        <button class="small" onclick="padToggleArchive()" id="padArchBtn">Past shifts</button>
+      </div>
+      <div class="hint" id="padStatus"></div>
+      <div id="padArchive" style="display:none"></div>
+      </div>
+      <div id="paneCaps" style="display:none">
+      <h2>Screen Captures</h2>
+      <div class="hint" style="margin:0 0 8px 0">Snip it (Win+Shift+S), then click in the box below and press Ctrl+V. Each capture is stamped with the date and time and saved in your I: file (shrunk to keep the file small). Up to 30 per shift; oldest drop off.</div>
+      <div id="capDrop" class="capdrop" tabindex="0" onpaste="capPaste(event)" onclick="this.focus()">
+        <div class="capbig">CLICK HERE, THEN Ctrl+V TO PASTE A CAPTURE</div>
+        <div class="hint" style="margin:4px 0 0 0">You can also drag an image file in, or use the button: <input type="file" id="capFile" accept="image/*" onchange="capFilePicked(this)" style="width:auto; font-size:12px"></div>
+      </div>
+      <div class="row" style="margin:8px 0 12px 0">
+        <input id="capCaption" placeholder="Caption for the next capture (optional) - e.g. FSM GDP ATL 1800Z" onkeydown="if(event.key==='Enter'){document.getElementById('capDrop').focus();}">
+      </div>
+      <div class="actions" style="margin:0 0 10px 0; flex-wrap:wrap">
+        <button class="small" onclick="capNewShift()" title="Move this shift's captures to the archive">New Shift (archive)</button>
+        <button class="small" onclick="capToggleArchive()" id="capArchBtn">Past shifts</button>
+        <span class="hint" id="capStatus" style="margin:0"></span>
+      </div>
+      <div id="capGrid" class="capgrid"></div>
+      <div id="capArchive" style="display:none"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="sentinelIdle">
+  <div class="t">ALERT WINDOW</div>
+  <div class="d">Drag me onto a monitor and leave me open.<br>I will grow to fill this monitor when an alarm fires,<br>then shrink to a small tab in the corner after you acknowledge.</div>
+  <div class="c" id="sClock">--:--:--</div>
+  <button class="small primary snote" onclick="sentinelNotes()" title="Write a quick note here; it goes into the shift log on the main page">Notes</button>
+  <div id="sStatus">Linked to Desk Log</div>
+</div>
+
+<div id="sNotePanel">
+  <div class="t">QUICK NOTE <span class="hint" id="sNoteStamp" style="margin:0 0 0 10px"></span></div>
+  <textarea id="sNoteText" placeholder="Type the note. Enter saves it to the shift log on the main page." onkeydown="sNoteKey(event)"></textarea>
+  <div class="actions" style="margin-top:8px">
+    <button class="primary" onclick="sNoteSave()">Save to Shift Log</button>
+    <button onclick="sNoteClose()">Cancel</button>
+    <span class="hint" id="sNoteStatus" style="margin:0"></span>
+  </div>
+</div>
+
+<div id="help">
+  <div class="helpbar">
+    <span>DESK LOG - HELP</span>
+    <span class="hint" style="margin:0 0 0 14px">Click a heading on the left to jump. Esc or Close to go back.</span>
+    <button class="primary" onclick="closeHelp()" style="margin-left:auto">Close</button>
+  </div>
+  <div class="helpwrap">
+    <div class="helpnav">
+      <a href="#h-what">What this is</a>
+      <a href="#h-start">Every shift: the 4 steps</a>
+      <a href="#h-file">Your I: file</a>
+      <a href="#h-windows">Alert windows</a>
+      <a href="#h-alarm">When an alarm goes off</a>
+      <a href="#h-quick">Quick Add</a>
+      <a href="#h-form">The edit form</a>
+      <a href="#h-time">Time, date, Local vs Zulu</a>
+      <a href="#h-repeat">Repeat and seasons</a>
+      <a href="#h-list">The reminder list</a>
+      <a href="#h-mute">Mute vs ACK vs X</a>
+      <a href="#h-notes">Notes tab</a>
+      <a href="#h-caps">Captures tab</a>
+      <a href="#h-settings">Sound, color, picture</a>
+      <a href="#h-defaults">Defaults, Clear All, Advanced</a>
+      <a href="#h-problems">If something is not working</a>
+    </div>
+    <div class="helpbody">
+      <h3 id="h-what">What this is</h3>
+      <p>Desk Log is a page you keep open all shift. It does three things: it alarms you for the calls and tasks you must not miss, it keeps your shift notes with time stamps so you can paste them into your SOCR, and it holds screen captures from the shift. Everything you add is saved to a file on your I: drive, so it follows you to whatever desk you sit at tomorrow.</p>
+      <p>It only alarms while this page is open in a browser tab. Do not close it during your shift.</p>
+
+      <h3 id="h-start">Every shift: the 4 steps</h3>
+      <p>The blue START HERE box on the Alarms tab walks you through it. In short:</p>
+      <ol>
+        <li><b>Turn on sound.</b> Browsers will not make noise until you click something on the page. The button beeps so you know it worked. If you do not want noise, click Skip; the screens still flash.</li>
+        <li><b>Open your reminders file.</b> Click Open My File and pick desk-log-data.js on your I: drive. First time ever, click I do not have a file yet and save a new one to I:. Skip means you run on the standard list for today only and nothing is saved.</li>
+        <li><b>Put an alert window on every screen.</b> Type how many screens you want covered and click Open Alert Windows. Small windows pop up; drag one onto each screen and leave it there. They shrink to a tab in the corner when nothing is going on.</li>
+        <li><b>Test it.</b> Click Test Alarm. Every screen should flash and beep. Click ACKNOWLEDGE on any screen to stop it.</li>
+      </ol>
+      <p>Each step turns green with DONE as you do it. The box folds away when all four are done; click the START HERE line to see it again.</p>
+
+      <h3 id="h-file">Your I: file</h3>
+      <p>Your reminders, your settings, your notes and your captures all live in one file: <b>desk-log-data.js</b>. Keep it on your I: drive. Once it is open (the status line under My Reminders File turns green), every change saves to it by itself about a second later. You never need to click Save, though there is a Save Now button if you want to be sure.</p>
+      <p>Edge asks for one approval per session to write to that file; that is the Open My File click. There is no way around that, it is how the browser protects your files.</p>
+      <p>If the file is not open, the page still works, but anything you add today lives only in this desk's browser and is gone when the VDI resets. The status line stays amber to remind you.</p>
+      <p>Tip: in the file window, your I: drive is in the list on the left, named with your employee number, like 840422$ (\\natladmhqrfs04) (I:). You can also just drag desk-log-data.js from Explorer and drop it anywhere on this page.</p>
+
+      <h3 id="h-windows">Alert windows</h3>
+      <p>The main page can only take over the screen it is on. To cover the others, it opens small helper windows, one per screen. Drag each onto a different monitor. When an alarm fires, each one grows to fill its monitor, flashes and beeps. When you acknowledge, they shrink to a small strip in the bottom-right corner showing the Zulu time and a Notes button.</p>
+      <p>The strip at the top of each helper window with the web address is put there by Edge and cannot be removed.</p>
+      <p><b>Notes button</b> on a helper window opens a quick note box right there. Type, press Enter, and the note goes into your shift log on the main page with the time stamp. Handy when the main page is buried under something else.</p>
+      <p>If a helper window gets closed, click Open Alert Windows again. The blue line under that button shows how many are connected. If Edge blocks the popups, click the blocked-popup icon at the right end of the address bar, choose Always allow, and click again.</p>
+      <p><b>Keep pulling alert windows to the front</b> (checkbox): while an alarm is live, the windows push themselves back in front every second so an email or Teams window cannot bury them. Uncheck it if you find that annoying.</p>
+
+      <h3 id="h-alarm">When an alarm goes off</h3>
+      <p>Every screen flashes with the reminder title in big letters, the time it is for, and your notes. Buttons:</p>
+      <ul>
+        <li><b>ACKNOWLEDGE</b> - handled. A daily reminder rolls to tomorrow. A one-time reminder is removed. If log acked alarms is on (Notes tab), a line goes into your shift log.</li>
+        <li><b>Snooze 5 / 10 / 15</b> - comes back in that many minutes, same buttons again.</li>
+        <li>If the reminder has an early alarm (say 2 minutes before), the alarm fires at the early time and there is an extra <b>Snooze 2 (= on time)</b> that lands you exactly on the call time. There is no second alarm at the call time; acknowledge means done, snooze if you want to be told again.</li>
+      </ul>
+      <p>Acknowledging or snoozing on any screen clears all of them.</p>
+
+      <h3 id="h-quick">Quick Add</h3>
+      <p>The bar above the reminder list is for ad hoc things that crop up: type what it is, build the time with the buttons, click ADD (or press Enter). The time starts at right now. +1, +5, +15 add minutes and stack (click +5 three times for 15). :15, :30, :45 and Next Hour jump to the next such mark and also stack. Undo takes back the last press; Reset goes back to now.</p>
+      <p>Quick Add makes a one-time, on-time, local-time reminder. Those show in the list with a blue tint and a blue bar on the left so they stand out from the standing calls. If you need more (repeat, early alarm, flight details), click Edit on its row.</p>
+
+      <h3 id="h-form">The edit form</h3>
+      <p>The left column is the full form. It is hidden by default; click the CLICK TO OPEN THE EDIT FORM rail to open it, and the Hide button to put it away. Edit or Duplicate on any row opens it for you.</p>
+      <p>Everything on it is optional. Fill in what you have:</p>
+      <ul>
+        <li><b>Category</b> - Flight, Conference call, Operational issue, Weather/ATC, Other. Picking Flight opens the flight details box: flight category (diversion, delay, MX and so on), flight number, tail, origin, destination.</li>
+        <li><b>Title</b> - what shows in big letters. Leave it blank and one is built from the category and flight details, for example Diversion DL1234 ATL-LGA.</li>
+        <li><b>Notes</b> - bridge number, who to call, what to check. Shown on the alert screen.</li>
+        <li><b>Fire at</b> - see Time, date, Local vs Zulu below.</li>
+        <li><b>Early alarm</b> - minutes before the alarm time that you want to be told. 0 means on time.</li>
+        <li><b>Repeat</b> and <b>Seasonal</b> - see Repeat and seasons below.</li>
+      </ul>
+      <p><b>Add Reminder</b> saves it. When you got there by Edit, the button reads Save Changes and there is a Cancel Edit next to it.</p>
+
+      <h3 id="h-time">Time, date, Local vs Zulu</h3>
+      <p>The header shows Local and Zulu clocks. The NOW strip in the form shows them again with seconds, plus how long until the fire time you are building.</p>
+      <p><b>DATE</b> defaults to today. Pick a later date for a one-time reminder in the future; the label beside it says tomorrow, 12 days out, and so on.</p>
+      <p><b>LOCAL and ZULU boxes</b> both show the fire time. Type in either one (1950 or 19:50 both work) and the other updates. If the date is today and that time has already passed, it rolls to tomorrow.</p>
+      <p><b>Buttons</b>: -1 hr through -1 and +1 through +1 hr nudge the time; NOW+5 resets; next :15 / :30 / :45 / top of hour jump; the 24 hour buttons set HH:00 local, then nudge the minutes.</p>
+      <p><b>Which clock controls</b> matters twice a year when the clocks change. LOCAL means the reminder keeps its local wall time (09:00L stays 09:00L and the Zulu time shifts an hour). ZULU means it keeps its Zulu time (1400Z stays 1400Z and the local time shifts). It sets itself to whichever box you typed in; you can also click LOCAL or ZULU. The list shows the controlling time in bold color.</p>
+
+      <h3 id="h-repeat">Repeat and seasons</h3>
+      <p><b>Repeat</b> runs from one time through every 15 minutes, hourly, every 2-12 hours, daily, weekdays, weekends, weekly, every 2 weeks, monthly, every 2 months, quarterly, every 6 months, yearly. Monthly types keep the date and clamp at month end (Jan 31 becomes Feb 28).</p>
+      <p><b>Seasonal</b> limits a repeating reminder to part of the year. Either click the month buttons (green = active; All year, Oct - Apr, May - Sep shortcuts) or set exact From and To dates (every year, the year part is ignored, and it can wrap over New Year like Nov 15 to Mar 31). Exact dates win over the month buttons. Out of season the reminder sits dimmed in the list and says when it next fires.</p>
+
+      <h3 id="h-list">The reminder list</h3>
+      <p>Two buckets: <b>TODAY</b> holds everything still to fire today, in time order, and shrinks as you acknowledge. <b>TOMORROW AND LATER</b> is collapsed; click it to see tomorrow's rollovers, future one-timers and off-season ones.</p>
+      <p>Columns: Reminder (title, notes, status), Mute, Alarm (local in blue, Zulu in amber, the controlling one in bold, plus the date and which clock controls), In (countdown to when it actually fires), Repeat, Triggers Alarm (2 min before at 13:13L, or On time at 14:30L), Cat (category and flight tag), then the buttons.</p>
+      <p>Rows turn amber inside 10 minutes and red when due. One-time alarms are tinted blue. Muted and off-season rows are dimmed.</p>
+
+      <h3 id="h-mute">Mute vs ACK vs X</h3>
+      <ul>
+        <li><b>Mute</b> - skip this one occurrence. It stays in the list, dimmed, and will not fire. A muted daily comes back unmuted tomorrow. There is a Mute button on both sides of the row.</li>
+        <li><b>ACK</b> - handled now, without waiting for it to fire. A daily moves to tomorrow (seasonal ones to the next in-season day). A one-time alarm is removed.</li>
+        <li><b>Edit</b> - opens it in the form. <b>Duplicate</b> - copies it into the form so you can set a new time and add it as a second reminder (same call two hours later, say).</li>
+        <li><b>X</b> - delete it.</li>
+      </ul>
+
+      <h3 id="h-notes">Notes tab</h3>
+      <p>Your running log for the shift. Start typing in the entry box and the date and time stamp themselves in front of what you type (10/28/26 14:38L / 18:38Z - ). Press Enter or click Add to save that note to the log below and start the next one. + Time Stamp drops another stamp inside the box if one note spans some time. The log itself can be edited by clicking into it. <b>Undo</b> and <b>Redo</b> (or Ctrl+Z / Ctrl+Y in the log) step back through the last 50 changes, including an accidental delete, a Clear All, or a New Shift archive. <b>Clear All</b> wipes the log after a yes/no check (it does not archive; use New Shift for that).</p>
+      <p><b>log acked alarms</b> (on by default) adds a stamped line each time you acknowledge an alarm, so the call log writes itself.</p>
+      <p><b>Copy for SOCR</b> copies the whole log to the clipboard. <b>New Shift (archive)</b> moves today's notes under Past shifts (the last 14 are kept) and blanks the pad; click a past shift to copy it. If you forget, it happens by itself: notes from a shift that started 14 or more hours ago are archived automatically the next time the page opens, your file is opened, or a new note is added, so a night shift's notes stay together and the next shift starts clean.</p>
+      <p>The number on the NOTES tab is how many notes you have this shift.</p>
+
+      <h3 id="h-caps">Captures tab</h3>
+      <p>Snip something (Win+Shift+S), click the dashed box, press Ctrl+V. The capture is stamped with the date and time, shrunk to keep your file small, and saved. Type a caption in the box first if you want one, or add it later with the Caption button. Click a thumbnail to see it full size; click anywhere to close. Copy puts it back on the clipboard as a picture for email or Teams. X deletes it.</p>
+      <p>Up to 30 per shift; the oldest drop off. New Shift (archive) keeps the last 3 shifts, 10 captures each, under Past shifts. Like the notes, captures from 14 or more hours ago are archived automatically.</p>
+
+      <h3 id="h-settings">Sound, color, picture</h3>
+      <ul>
+        <li><b>SOUND: ON / OFF</b> in the header. Off means no siren; screens still flash.</li>
+        <li><b>Alert color</b> (edit form, Multi-Monitor section) - ten color pairs; Preview shows one for 3 seconds without disturbing the alert windows.</li>
+        <li><b>Backdrop picture</b> - choose an image to show behind the alert text on every screen; the brightness slider keeps the words readable.</li>
+        <li>Number of alert windows and the keep-in-front checkbox are there too.</li>
+      </ul>
+      <p>All of these are saved in your I: file, so your setup follows you.</p>
+
+      <h3 id="h-defaults">Defaults, Clear All, Advanced</h3>
+      <p><b>Load Defaults</b> adds the standard team reminders (the SPO calls, briefings, huddles and so on) to your list, skipping any you already have. A brand-new user starts with them automatically. <b>Clear All</b> deletes every reminder. <b>Advanced</b> opens Export and Import, which copy and paste the whole file as text; use them if the I: file buttons are blocked on a computer, or to send your list to a coworker.</p>
+
+      <h3 id="h-problems">If something is not working</h3>
+      <ul>
+        <li><b>No sound</b> - click anywhere on the page once, or the Turn On Sound button. Check the header does not say SOUND: OFF.</li>
+        <li><b>Only one screen flashes</b> - the alert windows are not open, or were opened from an older copy of the page. Close them and click Open Alert Windows again. The blue count line should match your screens.</li>
+        <li><b>Nothing pops up</b> - popups are blocked. Click the icon at the right end of the address bar, choose Always allow for this site, click Open Alert Windows again.</li>
+        <li><b>My reminders are gone</b> - you did not open your I: file this shift. Click Open My File. If you never made one, Load Defaults gets the standard list back.</li>
+        <li><b>SAVE FAILED in amber</b> - the I: drive dropped. Click Open My File again, or Save Now once it is back.</li>
+        <li><b>Red bar at the top</b> - you are not in Edge or Chrome. Open the page in one of those.</li>
+        <li><b>It fired, then fired again at the call time</b> - that was the old behavior. Now it fires once, at the early time if you set one. If you see two, you have an old copy; reload the page.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div id="capView" onclick="capCloseView()">
+  <img id="capViewImg" alt="">
+  <div class="capviewcap" id="capViewCap"></div>
+  <div class="hint" style="color:#ccc">Click anywhere to close</div>
+</div>
+
+<div id="overlay">
+  <div id="oBack"></div>
+  <div class="big" id="oTitle">ALARM</div>
+  <div class="mid" id="oWhen"></div>
+  <div class="small" id="oNotes"></div>
+  <div class="btns" id="oBtns">
+    <button class="ack" onclick="ackAll()">ACKNOWLEDGE</button>
+    <button onclick="snoozeAll(5)">Snooze 5</button>
+    <button onclick="snoozeAll(10)">Snooze 10</button>
+    <button onclick="snoozeAll(15)">Snooze 15</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'occDeskAlarms_v1';
+  var CH_NAME = 'occDeskAlarmChannel';
+  var SENTINEL = /[?&]sentinel=1/.test(location.search);
+  var alarms = [];
+  var firedNow = [];      // alarms currently showing in overlay
+  var audioCtx = null;
+  var beepTimer = null;
+  var channel = null;
+  var sentinels = [];     // window handles of helper windows (main only)
+
+  // ---------- Users (named profiles, no password) ----------
+  var USERS_KEY = 'occDeskAlarmUsers';
+  var CUR_USER_KEY = 'occDeskAlarmUser';
+  var DEFAULT_USER = 'DESK';
+  var user = DEFAULT_USER;
+  function getUsers() {
+    var u;
+    try { u = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch (e) { u = []; }
+    if (!Array.isArray(u) || !u.length) u = [DEFAULT_USER];
+    return u;
+  }
+  function setUsers(u) { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+  function keyFor(u) { return u === DEFAULT_USER ? KEY : KEY + '_' + u; }   // DESK keeps the original key
+  function renderUsers() {
+    var sel = document.getElementById('userSel');
+    if (!sel) return;
+    var u = getUsers();
+    var h = '';
+    for (var i = 0; i < u.length; i++) {
+      h += '<option value="' + esc(u[i]) + '"' + (u[i] === user ? ' selected' : '') + '>' + esc(u[i]) + '</option>';
+    }
+    sel.innerHTML = h;
+  }
+  function switchUser(name) {
+    if (!name) return;
+    user = name;
+    localStorage.setItem(CUR_USER_KEY, user);
+    load(); render(); renderUsers();
+    document.getElementById('status').textContent = 'User ' + user + ': ' + alarms.length + ' reminder(s)';
+  }
+  function newUser() {
+    var name = prompt('New user name (letters/numbers, e.g. your initials):');
+    if (!name) return;
+    name = name.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 20);
+    if (!name) return;
+    var u = getUsers();
+    if (u.indexOf(name) < 0) { u.push(name); setUsers(u); }
+    switchUser(name);
+  }
+
+  // ---------- Storage ----------
+  function load() {
+    try { alarms = JSON.parse(localStorage.getItem(keyFor(user)) || '[]'); } catch (e) { alarms = []; }
+    if (!Array.isArray(alarms)) alarms = [];
+  }
+  var dirty = false;          // changed since the last successful write to the linked file
+  var saveFailed = false;
+  var lastSavedAt = 0;
+  function save() {
+    localStorage.setItem(keyFor(user), JSON.stringify(alarms));
+    dirty = true;
+    scheduleFileSave();
+  }
+
+  // ---------- Linked reminders file (File System Access API, Edge/Chrome) ----------
+  var fileHandle = null;
+  var fileSaveTimer = null;
+  var fileBusy = false;
+  function fsSupported() { return !!(window.showOpenFilePicker && window.showSaveFilePicker); }
+  function setFileStatus(msg, ok) {
+    var el = document.getElementById('fileStatus');
+    el.textContent = msg;
+    el.style.color = ok ? 'var(--ok)' : 'var(--warn)';
+  }
+  var DATA_FILE = 'desk-log-data.js';
+  var DATA_PREFIX = 'window.DESK_ALARM_DATA = ';
+  var FILE_TYPES = [{ description: 'Desk Log file', accept: { 'text/javascript': ['.js'], 'application/json': ['.json'] } }];
+  // File contents: {version:2, settings:{...}, alarms:[...]}. Also accepts a bare array (old files).
+  function parseDataText(txt) {
+    var s = String(txt || '').trim();
+    if (s.indexOf(DATA_PREFIX) === 0) s = s.slice(DATA_PREFIX.length);
+    s = s.replace(/;\s*$/, '');
+    var obj = null;
+    try { obj = JSON.parse(s || '[]'); } catch (e) { obj = null; }
+    if (Array.isArray(obj)) return { alarms: obj, settings: null };
+    if (obj && typeof obj === 'object') return { alarms: Array.isArray(obj.alarms) ? obj.alarms : [], settings: obj.settings || null, pad: obj.pad || null, caps: obj.caps || null };
+    return { alarms: [], settings: null };
+  }
+  function dataText() {
+    return DATA_PREFIX + JSON.stringify({ version: 3, savedAt: new Date().toISOString(), settings: settings, alarms: alarms, pad: notes, caps: caps }, null, 1) + ';\n';
+  }
+  // Apply what came out of a file: the person's own settings override the page defaults
+  function applyLoaded(d, sourceName) {
+    alarms = d.alarms;
+    localStorage.setItem(keyFor(user), JSON.stringify(alarms));
+    if (d.settings) { mergeSettings(d.settings); try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {} }
+    if (d.pad) { padApply(d.pad); try { localStorage.setItem(PAD_KEY, JSON.stringify(notes)); } catch (e) {} }
+    if (d.caps) { capsApply(d.caps); try { localStorage.setItem(CAPS_KEY, JSON.stringify(caps)); } catch (e) {} }
+    padAutoArchive(); capAutoArchive();
+    renderSettings();
+    render();
+  }
+  function openFile() {
+    if (!fsSupported()) { alert('This browser does not support file linking. Use Export / Import instead.'); return; }
+    window.showOpenFilePicker({ id: 'desklog', types: FILE_TYPES, multiple: false })
+      .then(function (hs) { return linkHandle(hs[0]); })
+      .catch(function (e) { if (e && e.name !== 'AbortError') alert('Could not open file: ' + e.message); });
+  }
+  // Link (create or replace) desk-log-data.js next to this page; current list is written to it
+  function createFile() {
+    if (!fsSupported()) { alert('This browser does not support file linking. Use Export / Import instead.'); return; }
+    window.showSaveFilePicker({ id: 'desklog', suggestedName: DATA_FILE, types: FILE_TYPES })
+      .then(function (h) { fileHandle = h; return writeFile(); })
+      .then(function () { setFileStatus('Linked: ' + fileHandle.name + ' (' + alarms.length + ' reminders) - auto-saving', true); })
+      .catch(function (e) { if (e && e.name !== 'AbortError') alert('Could not link file: ' + e.message); });
+  }
+  function writeFile() {
+    if (!fileHandle) return Promise.resolve();
+    fileBusy = true;
+    return fileHandle.createWritable()
+      .then(function (w) { return w.write(dataText()).then(function () { return w.close(); }); })
+      .then(function () {
+        fileBusy = false; dirty = false; saveFailed = false; lastSavedAt = Date.now();
+        setFileStatus('Linked: ' + fileHandle.name + ' (' + alarms.length + ' reminders) - saved ' + fmtTime(new Date(lastSavedAt)) + 'L', true);
+      })
+      .catch(function (e) { fileBusy = false; saveFailed = true; setFileStatus('SAVE FAILED to ' + fileHandle.name + ': ' + e.message, false); });
+  }
+  // Shared by Open and drag-drop: read the file, link the handle
+  function linkHandle(h) {
+    fileHandle = h;
+    return h.getFile().then(function (f) { return f.text(); }).then(function (txt) {
+      applyLoaded(parseDataText(txt), h.name);
+      dirty = false; lastSavedAt = Date.now();
+      setFileStatus('Linked: ' + h.name + ' (' + alarms.length + ' reminders) - auto-saving', true);
+      document.getElementById('status').textContent = 'Loaded ' + alarms.length + ' reminder(s) from ' + h.name;
+    });
+  }
+  // Drag desk-log-data.js from Explorer onto the page = open + link in one move
+  function setupDrop() {
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var items = e.dataTransfer && e.dataTransfer.items;
+      if (!items || !items.length) return;
+      var it = items[0];
+      if (it.getAsFileSystemHandle) {
+        it.getAsFileSystemHandle().then(function (h) {
+          if (h && h.kind === 'file') return linkHandle(h);
+        }).catch(function (err) { alert('Could not link dropped file: ' + err.message); });
+      } else {
+        // no writable handle available: read-only import
+        var f = it.getAsFile();
+        if (!f) return;
+        var r = new FileReader();
+        r.onload = function () {
+          applyLoaded(parseDataText(r.result), f.name); save();
+          setFileStatus('Imported ' + alarms.length + ' from ' + f.name + ' (read only - use Create I: File to link for saving)', false);
+        };
+        r.readAsText(f);
+      }
+    });
+  }
+  // ---------- Start Here guide ----------
+  var soundOn = false, testDone = false, guideHidden = false;
+  function guideSound() {
+    ensureAudio(); soundOn = true;
+    if (!settings.sound) { settings.sound = true; saveSettings(); renderSettings(); }
+    beep(880, 0.15); updateGuide();
+  }
+  var fileSkipped = false;
+  function guideSkipFile() {
+    fileSkipped = true;
+    document.getElementById('status').textContent = 'Using the defaults - nothing will be saved past today. You can still Open your file later from My Reminders File.';
+    updateGuide();
+  }
+  function guideSkipSound() {
+    soundOn = true;                       // step is done either way
+    if (settings.sound) { settings.sound = false; saveSettings(); renderSettings(); }
+    document.getElementById('status').textContent = 'Siren OFF - screens will still flash. Use the SOUND button at the top to turn it back on.';
+    updateGuide();
+  }
+  function guideWindows() {
+    document.getElementById('fWin').value = document.getElementById('gWin').value;
+    openSentinels();
+  }
+  function guideTest() { testDone = true; testAlarm(); updateGuide(); }
+  var guideForced = false;   // Help was clicked: keep it open even when every step is done
+  function hideGuide() { guideHidden = true; guideForced = false; updateGuide(); }
+  function showGuide() { guideHidden = false; guideForced = true; updateGuide(); }
+  function updateGuide() {
+    var g = document.getElementById('guide');
+    if (!g) return;
+    var steps = [soundOn, !!fileHandle || fileSkipped, liveSentinels() > 0, testDone];
+    for (var i = 0; i < 4; i++) {
+      document.getElementById('g' + (i + 1)).className = 'gstep' + (steps[i] ? ' done' : '');
+      document.getElementById('g' + (i + 1) + 'd').textContent = steps[i] ? 'DONE' : '';
+    }
+    // step 2 reads differently when skipped (file not linked)
+    var g2 = document.getElementById('g2');
+    var g2h = g2.querySelector('.gh');
+    if (!fileHandle && fileSkipped) {
+      g2.className = 'gstep skipped';
+      document.getElementById('g2d').textContent = 'SKIPPED';
+      g2h.textContent = 'Using defaults (nothing saved past today)';
+    } else {
+      g2h.textContent = fileHandle ? 'Your file is open' : 'Open your reminders file';
+    }
+    // step 1 reads differently when the person chose no sound
+    var g1 = document.getElementById('g1');
+    var g1h = g1.querySelector('.gh');
+    if (soundOn && !settings.sound) {
+      g1.className = 'gstep skipped';
+      document.getElementById('g1d').textContent = 'SKIPPED';
+      g1h.textContent = 'Sound is off (screens still flash)';
+    } else {
+      g1h.textContent = soundOn ? 'Sound is on' : 'Turn on sound';
+    }
+    var all = steps[0] && steps[1] && steps[2] && steps[3];
+    var hide = guideForced ? false : (guideHidden || all);
+    g.className = hide ? 'hidden' : '';
+    document.getElementById('helpBtn').style.display = hide ? 'block' : 'none';
+  }
+  function scheduleFileSave() {
+    if (!fileHandle) return;
+    if (fileSaveTimer) clearTimeout(fileSaveTimer);
+    fileSaveTimer = setTimeout(function () { fileSaveTimer = null; writeFile(); }, 800);
+  }
+  function saveFileNow() {
+    if (!fileHandle) { createFile(); return; }
+    writeFile().then(function () { document.getElementById('status').textContent = 'Saved to ' + fileHandle.name; });
+  }
+  function toggleAdvanced() {
+    var a = document.getElementById('advanced');
+    var open = a.style.display === 'none';
+    a.style.display = open ? 'block' : 'none';
+    document.getElementById('advBtn').className = 'small' + (open ? ' on' : '');
+  }
+  function masterReset() {
+    if (!confirm('MASTER RESET: delete every user, every reminder and every setting on this machine?')) return;
+    if (!confirm('Last chance - this cannot be undone. Reset everything?')) return;
+    var kill = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('occDesk') === 0) kill.push(k);
+    }
+    for (var j = 0; j < kill.length; j++) localStorage.removeItem(kill[j]);
+    alarms = []; user = DEFAULT_USER;
+    location.reload();
+  }
+
+  // ---------- Built-in default reminders (local time of day, daily) ----------
+  // A brand-new user with no file and nothing in browser storage starts with these.
+  // "Load Defaults" in the list also re-adds them. Edit this list to change the team defaults.
+  var DEFAULT_ALARMS = [
+    { time: '06:35', title: "ATL CALL", cat: 'call', pre: 3, repeat: 'daily', tz: 'L' },
+    { time: '06:45', title: "OCC HUDDLE", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '07:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '07:30', title: "OCC BRIEFING", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '08:15', title: "REGIONAL BRIEFING", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '08:30', title: "A4A CALL", cat: 'call', pre: 3, repeat: 'daily', tz: 'L' },
+    { time: '09:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '10:00', title: "OT COVER", cat: 'other', pre: 0, repeat: 'daily', tz: 'L' },
+    { time: '10:15', title: "N90 SWAP CALL (SEASONAL)", cat: 'call', pre: 2, repeat: 'daily', tz: 'L', months: [false, false, true, true, true, true, true, true, true, false, false, false] },
+    { time: '11:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '13:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '14:00', title: "OCC BRIEFING", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '14:15', title: "ATL CALL", cat: 'call', pre: 3, repeat: 'daily', tz: 'L' },
+    { time: '14:30', title: "PERTI", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '15:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '15:30', title: "ATC SHIFT COMMENTS", cat: 'other', pre: 0, repeat: 'daily', tz: 'L' },
+    { time: '17:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '18:45', title: "OCC HUDDLE", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '19:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '20:00', title: "LGA CURFEW", cat: 'ops', pre: 0, repeat: 'daily', tz: 'L', season: { from: '03-15', to: '11-15' } },
+    { time: '21:00', title: "MTC BRIEFING", cat: 'ops', pre: 5, repeat: 'daily', tz: 'L' },
+    { time: '21:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
+    { time: '22:30', title: "ATC SHIFT COMMENTS", cat: 'other', pre: 0, repeat: 'daily', tz: 'L' }
+  ];
+  function nextLocal(hhmm) {
+    var p = parseHHMM(hhmm);
+    var d = new Date(); d.setHours(p.h, p.m, 0, 0);
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  function buildDefaults() {
+    var out = [];
+    for (var i = 0; i < DEFAULT_ALARMS.length; i++) {
+      var t = DEFAULT_ALARMS[i];
+      var at = nextLocal(t.time);
+      out.push({ id: uid() + i, cat: t.cat, flt: '', fltNo: '', tail: '', orig: '', dest: '',
+        at: at, pre: t.pre || 0, repeat: t.repeat || 'daily', tz: t.tz || 'L',
+        months: t.months || [true, true, true, true, true, true, true, true, true, true, true, true],
+        season: t.season || null,
+        notes: t.notes || '', muted: false, fired: false, preFired: false, title: t.title });
+    }
+    return out;
+  }
+  // Add any default that is not already in the list (matched on title + time of day)
+  function loadDefaults(silent) {
+    var defs = buildDefaults();
+    var added = 0;
+    for (var i = 0; i < defs.length; i++) {
+      var dup = false;
+      for (var j = 0; j < alarms.length; j++) {
+        var a = alarms[j], d = defs[i];
+        var ta = new Date(a.at), td = new Date(d.at);
+        if (a.title === d.title && ta.getHours() === td.getHours() && ta.getMinutes() === td.getMinutes()) { dup = true; break; }
+      }
+      if (!dup) { if (!inSeason(defs[i], defs[i].at)) reschedule(defs[i]); alarms.push(defs[i]); added++; }
+    }
+    save(); render();
+    if (!silent) document.getElementById('status').textContent = 'Loaded defaults: ' + added + ' added' + (added < defs.length ? ', ' + (defs.length - added) + ' already there' : '');
+    return added;
+  }
+  // ---------- Repeat scheduling ----------
+  function addMonths(ms, n) {
+    var d = new Date(ms);
+    var day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + n);
+    var last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, last));      // Jan 31 + 1 month -> Feb 28/29
+    return d.getTime();
+  }
+  function addDays(ms, n) { var d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); }
+  // Zulu-controlled versions: step in UTC so the Z time survives a DST change
+  function addDaysZ(ms, n) { var d = new Date(ms); d.setUTCDate(d.getUTCDate() + n); return d.getTime(); }
+  function addMonthsZ(ms, n) {
+    var d = new Date(ms);
+    var day = d.getUTCDate();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + n);
+    var last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(day, last));
+    return d.getTime();
+  }
+  // Next occurrence strictly after the current one; null for one-time. tz 'Z' keeps the Zulu time fixed.
+  function nextOnce(at, r, tz) {
+    if (tz === 'Z') {
+      var dowZ = function (ms) { return new Date(ms).getUTCDay(); };
+      switch (r) {
+        case 'daily': return addDaysZ(at, 1);
+        case 'weekdays': { var nz = addDaysZ(at, 1); while (dowZ(nz) === 0 || dowZ(nz) === 6) nz = addDaysZ(nz, 1); return nz; }
+        case 'weekends': { var wz = addDaysZ(at, 1); while (dowZ(wz) !== 0 && dowZ(wz) !== 6) wz = addDaysZ(wz, 1); return wz; }
+        case 'weekly': return addDaysZ(at, 7);
+        case 'biweekly': return addDaysZ(at, 14);
+        case 'monthly': return addMonthsZ(at, 1);
+        case 'bimonthly': return addMonthsZ(at, 2);
+        case 'quarterly': return addMonthsZ(at, 3);
+        case 'semiannual': return addMonthsZ(at, 6);
+        case 'yearly': return addMonthsZ(at, 12);
+      }
+      // hourly-type repeats fall through: they are the same in either clock
+    }
+    switch (r) {
+      case 'm15': return at + 15 * 60000;
+      case 'm30': return at + 30 * 60000;
+      case 'hourly': return at + 3600000;
+      case 'h2': return at + 2 * 3600000;
+      case 'h3': return at + 3 * 3600000;
+      case 'h4': return at + 4 * 3600000;
+      case 'h6': return at + 6 * 3600000;
+      case 'h8': return at + 8 * 3600000;
+      case 'h12': return at + 12 * 3600000;
+      case 'daily': return addDays(at, 1);
+      case 'weekdays': { var n = addDays(at, 1); while (new Date(n).getDay() === 0 || new Date(n).getDay() === 6) n = addDays(n, 1); return n; }
+      case 'weekends': { var w = addDays(at, 1); while (new Date(w).getDay() !== 0 && new Date(w).getDay() !== 6) w = addDays(w, 1); return w; }
+      case 'weekly': return addDays(at, 7);
+      case 'biweekly': return addDays(at, 14);
+      case 'monthly': return addMonths(at, 1);
+      case 'bimonthly': return addMonths(at, 2);
+      case 'quarterly': return addMonths(at, 3);
+      case 'semiannual': return addMonths(at, 6);
+      case 'yearly': return addMonths(at, 12);
+      default: return null;
+    }
+  }
+  // Roll a repeating alarm forward until it is in the future
+  function reschedule(a) {
+    var n = nextOnce(a.at, a.repeat, a.tz);
+    if (n === null) return false;
+    var guard = 0;
+    while ((n <= Date.now() || !inSeason(a, n)) && guard++ < 20000) n = nextOnce(n, a.repeat, a.tz);
+    a.at = n; a.fired = false; a.preFired = false;
+    return true;
+  }
+  var REPEAT_NAMES = { none: '', m15: 'every 15m', m30: 'every 30m', hourly: 'hourly', h2: 'every 2h', h3: 'every 3h',
+    h4: 'every 4h', h6: 'every 6h', h8: 'every 8h', h12: 'every 12h', daily: 'daily', weekdays: 'weekdays',
+    weekends: 'weekends', weekly: 'weekly', biweekly: 'every 2 wks', monthly: 'monthly', bimonthly: 'every 2 mo',
+    quarterly: 'quarterly', semiannual: 'every 6 mo', yearly: 'yearly' };
+
+  // ---------- Helpers ----------
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtTime(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+  function fmtShort(ms) {
+    var d = new Date(ms);
+    var now = new Date();
+    var sameDay = d.toDateString() === now.toDateString();
+    var t = pad(d.getHours()) + pad(d.getMinutes()) + 'L/' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + 'Z';
+    return sameDay ? t : (pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + t);
+  }
+  function fmtZ(d) { return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()); }
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function fmtDateL(d) { return DAYS[d.getDay()] + ' ' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()); }
+  function fmtDateZ(d) { return DAYS[d.getUTCDay()] + ' ' + pad(d.getUTCMonth() + 1) + '/' + pad(d.getUTCDate()); }
+
+  // ---------- Fire time (single timestamp, shown as LOCAL and ZULU HHMM) ----------
+  var fireAt = 0;
+  function setFire(ms) {
+    var d = new Date(ms);
+    d.setSeconds(0, 0);
+    fireAt = d.getTime();
+    document.getElementById('fLocal').value = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    document.getElementById('fZulu').value = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+    document.getElementById('fDateL').textContent = fmtDateL(d);
+    document.getElementById('fDateZ').textContent = fmtDateZ(d);
+    document.getElementById('fDate').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var dd = new Date(d); dd.setHours(0, 0, 0, 0);
+    var daysOut = Math.round((dd - today) / 86400000);
+    document.getElementById('fDateHint').textContent = daysOut === 0 ? 'today' : (daysOut === 1 ? 'tomorrow' : (daysOut > 1 ? daysOut + ' days out' : 'IN THE PAST'));
+    updateFireIn();
+    markHour();
+  }
+  // Which clock "owns" the time: L keeps the local wall time across a DST change, Z keeps the Zulu time
+  var fireTz = 'L';
+  function setTz(tz) {
+    fireTz = (tz === 'Z') ? 'Z' : 'L';
+    var l = document.getElementById('tzL'), z = document.getElementById('tzZ');
+    if (l) { l.className = 'small' + (fireTz === 'L' ? ' primary' : ''); }
+    if (z) { z.className = 'small' + (fireTz === 'Z' ? ' on' : ''); }
+    var h = document.getElementById('tzHint');
+    if (h) h.textContent = fireTz === 'L' ? 'local time stays fixed; Zulu shifts at the clock change' : 'Zulu time stays fixed; local shifts at the clock change';
+  }
+  // The date box: the local calendar day the reminder fires on
+  function pickedDate() {
+    var v = document.getElementById('fDate').value;   // yyyy-mm-dd
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+    if (!m) return null;
+    return { y: parseInt(m[1], 10), mo: parseInt(m[2], 10) - 1, d: parseInt(m[3], 10) };
+  }
+  function dateIsToday() {
+    var p = pickedDate(); if (!p) return true;
+    var t = new Date();
+    return p.y === t.getFullYear() && p.mo === t.getMonth() && p.d === t.getDate();
+  }
+  function dateTyped() {
+    var p = pickedDate();
+    if (!p) { setFire(fireAt || Date.now() + 5 * 60000); return; }
+    var d = new Date(fireAt || Date.now());
+    d.setFullYear(p.y, p.mo, p.d);      // keep the HH:MM, move the day
+    setFire(d.getTime());
+  }
+  function updateFireIn() {
+    var el = document.getElementById('fireIn');
+    if (!fireAt) { el.textContent = ''; return; }
+    var s = Math.round((fireAt - Date.now()) / 1000);
+    el.textContent = s < 0 ? 'fire time is in the past' : 'fires in ' + countdown(fireAt);
+  }
+  // "1935", "19:35", "935" -> {h, m} or null
+  function parseHHMM(s) {
+    s = String(s || '').replace(/[^0-9]/g, '');
+    if (s.length === 3) s = '0' + s;
+    if (s.length !== 4) return null;
+    var h = parseInt(s.slice(0, 2), 10), m = parseInt(s.slice(2), 10);
+    if (h > 23 || m > 59) return null;
+    return { h: h, m: m };
+  }
+  // Wall-clock time on the picked date. If the date is today and the time already passed, roll to tomorrow.
+  function localTyped() {
+    setTz('L');
+    var p = parseHHMM(document.getElementById('fLocal').value);
+    if (!p) { setFire(fireAt || Date.now() + 5 * 60000); return; }
+    var pd = pickedDate();
+    var d = pd ? new Date(pd.y, pd.mo, pd.d) : new Date();
+    d.setHours(p.h, p.m, 0, 0);
+    if (dateIsToday() && d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1);
+    setFire(d.getTime());
+  }
+  function zuluTyped() {
+    setTz('Z');
+    var p = parseHHMM(document.getElementById('fZulu').value);
+    if (!p) { setFire(fireAt || Date.now() + 5 * 60000); return; }
+    var d = new Date(fireAt || Date.now());   // keep the picked day, swap in the Z time
+    d.setUTCHours(p.h, p.m, 0, 0);
+    if (dateIsToday() && d.getTime() < Date.now() - 60000) d.setUTCDate(d.getUTCDate() + 1);
+    setFire(d.getTime());
+  }
+  function nudge(mins) { setFire((fireAt || Date.now()) + mins * 60000); }
+  function toLocalInput(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function countdown(ms) {
+    var s = Math.round((ms - Date.now()) / 1000);
+    if (s <= 0) return 'DUE';
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h > 0) return h + 'h ' + pad(m) + 'm';
+    if (m > 0) return m + 'm ' + pad(sec) + 's';
+    return sec + 's';
+  }
+  function catLabel(c) {
+    return { flight: 'FLIGHT', call: 'CALL', ops: 'OPS', wx: 'WX/ATC', other: 'OTHER' }[c] || 'OTHER';
+  }
+  // "DIV DL1234 N123DN ATL-LGA" built from whatever flight fields were filled in
+  function fltLabel(a) {
+    var parts = [];
+    if (a.flt) parts.push(a.flt);
+    if (a.fltNo) parts.push(a.fltNo);
+    if (a.tail) parts.push(a.tail);
+    if (a.orig || a.dest) parts.push((a.orig || '???') + '-' + (a.dest || '???'));
+    return parts.join(' ');
+  }
+  var FLT_NAMES = { DIV: 'Diversion', DLY: 'Delay', CNL: 'Cancel', MX: 'Maintenance', CREW: 'Crew',
+    FUEL: 'Fuel', WX: 'Weather hold', ATC: 'ATC', DEICE: 'Deice', GATE: 'Gate', INTL: 'International',
+    VIP: 'VIP', MED: 'Medical', SWAP: 'Equipment swap', OTHER: 'Flight' };
+  // Title when the user left it blank
+  function autoTitle(a) {
+    if (a.cat === 'flight') {
+      var p = [];
+      p.push(FLT_NAMES[a.flt] || 'Flight');
+      if (a.fltNo) p.push(a.fltNo);
+      else if (a.tail) p.push(a.tail);
+      if (a.orig || a.dest) p.push((a.orig || '???') + '-' + (a.dest || '???'));
+      return p.join(' ');
+    }
+    return { call: 'Conference call', ops: 'Operational issue', wx: 'Weather / ATC', other: 'Reminder' }[a.cat] || 'Reminder';
+  }
+  function catChanged() {
+    var isFlt = document.getElementById('fCat').value === 'flight';
+    document.getElementById('fltBox').className = 'sub' + (isFlt ? ' open' : '');
+    if (isFlt) document.getElementById('fFlt').focus();
+  }
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  // ---------- Sound ----------
+  function ensureAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { audioCtx = null; }
+  }
+  function beep(freq, dur) {
+    if (!audioCtx) return;
+    try {
+      var o = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      o.type = 'square';
+      o.frequency.value = freq;
+      g.gain.value = 0.25;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+  // ---------- Settings: sound on/off and alert color (saved in this browser) ----------
+  var SET_KEY = 'occDeskAlarmSettings';
+  // Defaults for a brand-new user. A person's saved file overrides these.
+  var settings = { sound: true, palette: 'red', keepFront: true, leftClosed: true, windows: 1, backdrop: '', backdropDim: 45, padLogAcks: true };
+  var PALETTES = {
+    red:     { name: 'Red / White (default)', a1: '#b00000', a2: '#ffffff' },
+    orange:  { name: 'Orange / Black',        a1: '#ff6a00', a2: '#000000' },
+    yellow:  { name: 'Yellow / Black',        a1: '#ffd000', a2: '#000000' },
+    green:   { name: 'Green / White',         a1: '#107a2b', a2: '#ffffff' },
+    blue:    { name: 'Blue / White',          a1: '#0044cc', a2: '#ffffff' },
+    cyan:    { name: 'Cyan / Black',          a1: '#00c8ff', a2: '#000000' },
+    purple:  { name: 'Purple / White',        a1: '#6a0dad', a2: '#ffffff' },
+    magenta: { name: 'Magenta / White',       a1: '#d4007a', a2: '#ffffff' },
+    white:   { name: 'White / Black',         a1: '#ffffff', a2: '#000000' },
+    redblk:  { name: 'Red / Black',           a1: '#d00000', a2: '#000000' }
+  };
+  // Merge a settings object (from browser storage or the saved file) over the defaults
+  function mergeSettings(s) {
+    if (!s || typeof s !== 'object') return;
+    if (typeof s.sound === 'boolean') settings.sound = s.sound;
+    if (PALETTES[s.palette]) settings.palette = s.palette;
+    if (typeof s.keepFront === 'boolean') settings.keepFront = s.keepFront;
+    if (typeof s.leftClosed === 'boolean') settings.leftClosed = s.leftClosed;
+    var w = parseInt(s.windows, 10); if (w >= 1 && w <= 6) settings.windows = w;
+    if (typeof s.backdrop === 'string' && (s.backdrop === '' || s.backdrop.indexOf('data:image/') === 0)) settings.backdrop = s.backdrop;
+    var bd = parseInt(s.backdropDim, 10); if (bd >= 10 && bd <= 100) settings.backdropDim = bd;
+    if (typeof s.padLogAcks === 'boolean') settings.padLogAcks = s.padLogAcks;
+  }
+  // ---------- Backdrop picture ----------
+  function applyBackdrop() {
+    var b = document.getElementById('oBack');
+    if (!b) return;
+    b.style.backgroundImage = settings.backdrop ? 'url("' + settings.backdrop + '")' : 'none';
+    b.style.setProperty('--bo', (settings.backdropDim / 100).toFixed(2));
+    var info = document.getElementById('backdropInfo');
+    if (info) info.textContent = settings.backdrop ? 'Picture set (' + Math.round(settings.backdrop.length * 0.75 / 1024) + ' KB, saved in your file)' : 'No picture';
+    var dim = document.getElementById('fBackdropDim'); if (dim) dim.value = settings.backdropDim;
+  }
+  // Shrink the picture to fit a screen and keep the saved file small
+  function backdropPicked(input) {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var MAX = 1600, w = img.width, h = img.height;
+        if (w > MAX || h > MAX) { var k = MAX / Math.max(w, h); w = Math.round(w * k); h = Math.round(h * k); }
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        settings.backdrop = c.toDataURL('image/jpeg', 0.8);
+        saveSettings(); applyBackdrop();
+        document.getElementById('status').textContent = 'Backdrop picture set - click Preview to see it';
+      };
+      img.onerror = function () { alert('That file does not look like a picture.'); };
+      img.src = r.result;
+    };
+    r.readAsDataURL(f);
+    input.value = '';
+  }
+  function clearBackdrop() { settings.backdrop = ''; saveSettings(); applyBackdrop(); }
+  function backdropDimChanged(v) { settings.backdropDim = parseInt(v, 10) || 45; saveSettings(); applyBackdrop(); }
+  function loadSettings() {
+    try { mergeSettings(JSON.parse(localStorage.getItem(SET_KEY) || '{}')); } catch (e) {}
+  }
+  function saveSettings() {
+    try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {}
+    dirty = true;
+    scheduleFileSave();   // settings live in the saved file too
+  }
+  function applyPalette(key) {
+    var p = PALETTES[key] || PALETTES.red;
+    var ov = document.getElementById('overlay');
+    ov.style.setProperty('--a1', p.a1);
+    ov.style.setProperty('--a2', p.a2);
+  }
+  function renderSettings() {
+    var sel = document.getElementById('fPalette');
+    if (sel) {
+      var h = '';
+      for (var k in PALETTES) if (PALETTES.hasOwnProperty(k)) h += '<option value="' + k + '"' + (k === settings.palette ? ' selected' : '') + '>' + PALETTES[k].name + '</option>';
+      sel.innerHTML = h;
+      var p = PALETTES[settings.palette];
+      document.getElementById('sw1').style.background = p.a1;
+      document.getElementById('sw2').style.background = p.a2;
+    }
+    var b = document.getElementById('soundBtn');
+    if (b) { b.textContent = settings.sound ? 'SOUND: ON' : 'SOUND: OFF'; b.className = 'small' + (settings.sound ? ' on' : ' danger'); }
+    var kf = document.getElementById('fKeepFront'); if (kf) kf.checked = settings.keepFront;
+    var fw = document.getElementById('fWin'); if (fw) fw.value = settings.windows;
+    var gw = document.getElementById('gWin'); if (gw) gw.value = settings.windows;
+    if (typeof setLeft === 'function' && document.getElementById('collapseBtn')) setLeft(settings.leftClosed);
+    applyPalette(settings.palette);
+    applyBackdrop();
+    var pl = document.getElementById('padLogAcks'); if (pl) pl.checked = settings.padLogAcks;
+
+  }
+  function keepFrontChanged() {
+    settings.keepFront = document.getElementById('fKeepFront').checked;
+    saveSettings();
+  }
+  function toggleSound() {
+    settings.sound = !settings.sound;
+    saveSettings(); renderSettings();
+    if (!settings.sound) stopSiren();
+    document.getElementById('status').textContent = settings.sound ? 'Siren on' : 'Siren OFF - screens will still flash';
+  }
+  function paletteChanged() {
+    settings.palette = document.getElementById('fPalette').value;
+    saveSettings(); renderSettings();
+  }
+  function previewPalette() {
+    applyPalette(settings.palette);
+    var ov = document.getElementById('overlay');
+    document.getElementById('oTitle').textContent = 'COLOR PREVIEW';
+    document.getElementById('oWhen').textContent = PALETTES[settings.palette].name;
+    document.getElementById('oNotes').textContent = 'Closes by itself in 3 seconds';
+    ov.className = 'show flash';
+    setTimeout(function () { if (document.getElementById('oTitle').textContent === 'COLOR PREVIEW') ov.className = ''; }, 3000);
+  }
+  function startSiren() {
+    stopSiren();
+    if (!settings.sound) return;
+    ensureAudio();
+    var hi = true;
+    beepTimer = setInterval(function () {
+      beep(hi ? 1100 : 750, 0.25);
+      hi = !hi;
+    }, 400);
+  }
+  function stopSiren() {
+    if (beepTimer) { clearInterval(beepTimer); beepTimer = null; }
+  }
+
+  // ---------- Cross-window messaging ----------
+  function setupChannel() {
+    if (window.BroadcastChannel) {
+      channel = new BroadcastChannel(CH_NAME);
+      channel.onmessage = function (ev) { handleMsg(ev.data); };
+    }
+    // localStorage fallback (works on same origin / file in most setups)
+    window.addEventListener('storage', function (ev) {
+      if (ev.key === CH_NAME + '_msg' && ev.newValue) {
+        try { handleMsg(JSON.parse(ev.newValue)); } catch (e) {}
+      }
+      if (ev.key === KEY && !SENTINEL) { load(); render(); }
+    });
+    // Direct window-to-window messages (most reliable on file:// in Edge)
+    window.addEventListener('message', function (ev) {
+      var d = ev.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
+      if (!d || d.src !== 'occDeskAlarm') return;
+      handleMsg(d);
+    });
+  }
+  function broadcast(msg) {
+    msg.ts = Date.now();
+    msg.src = 'occDeskAlarm';
+    if (!SENTINEL && msg.type === 'fire') { msg.palette = settings.palette; msg.sound = settings.sound; msg.keepFront = settings.keepFront; msg.backdrop = settings.backdrop; msg.backdropDim = settings.backdropDim; }
+    var s = JSON.stringify(msg);
+    try { if (channel) channel.postMessage(msg); } catch (e) {}
+    try { localStorage.setItem(CH_NAME + '_msg', s); } catch (e) {}
+    if (SENTINEL) {
+      // helper -> main
+      try { if (window.opener && !window.opener.closed) window.opener.postMessage(s, '*'); } catch (e) {}
+    } else {
+      // main -> every helper window it opened
+      for (var i = 0; i < sentinels.length; i++) {
+        try { if (sentinels[i] && !sentinels[i].closed) sentinels[i].postMessage(s, '*'); } catch (e) {}
+      }
+    }
+  }
+  var seenNotes = [];
+  function handleMsg(msg) {
+    if (!msg || !msg.type) return;
+    if (msg.type === 'fire') {
+      if (!SENTINEL) return;       // main fires itself; ignore echoes
+      if (PALETTES[msg.palette]) settings.palette = msg.palette;   // follow the main window's color
+      if (typeof msg.sound === 'boolean') settings.sound = msg.sound;
+      if (typeof msg.keepFront === 'boolean') settings.keepFront = msg.keepFront;
+      if (typeof msg.backdrop === 'string') settings.backdrop = msg.backdrop;
+      if (msg.backdropDim) settings.backdropDim = msg.backdropDim;
+      applyPalette(settings.palette);
+      applyBackdrop();
+      showOverlay(msg.title, msg.when, msg.notes, msg.pre, msg.warn);
+    } else if (msg.type === 'ack') {
+      if (SENTINEL) hideOverlay(); else ackAll();
+    } else if (msg.type === 'snooze') {
+      if (SENTINEL) hideOverlay(); else snoozeAll(msg.mins || 5);
+    } else if (msg.type === 'notes') {
+      if (!SENTINEL) jumpToNotes();
+    } else if (msg.type === 'note') {
+      // the same note can arrive over more than one channel - log it once
+      if (!SENTINEL && typeof msg.text === 'string' && msg.text.trim() && msg.nid && seenNotes.indexOf(msg.nid) < 0) {
+        seenNotes.push(msg.nid); if (seenNotes.length > 200) seenNotes.shift();
+        padAppend(msg.text.trim());
+      }
+    }
+  }
+
+  // Sentinel: expand to fill the monitor it is sitting on, shrink back later
+  function expandToScreen() {
+    try {
+      document.body.className = 'sentinel';
+      var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
+      var t = (screen.availTop !== undefined) ? screen.availTop : 0;
+      window.moveTo(l, t);
+      window.resizeTo(screen.availWidth, screen.availHeight);
+    } catch (e) {}
+  }
+  // Sentinel: collapse to a small strip in the bottom-right corner of its monitor
+  var PARK_W = 280, PARK_H = 46;
+  function shrinkBack() {
+    try {
+      var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
+      var t = (screen.availTop !== undefined) ? screen.availTop : 0;
+      window.resizeTo(PARK_W, PARK_H);
+      window.moveTo(l + screen.availWidth - PARK_W - 10, t + screen.availHeight - PARK_H - 10);
+      document.body.className = 'sentinel parked';
+    } catch (e) {}
+  }
+  function liveSentinels() {
+    var n = 0;
+    for (var i = 0; i < sentinels.length; i++) if (sentinels[i] && !sentinels[i].closed) n++;
+    return n;
+  }
+
+  // ---------- Overlay ----------
+  // Snooze buttons built per alarm: the reminder's own warn minutes first, then the standard set
+  function buildSnoozeButtons(pre, warn) {
+    var mins = [];
+    if (warn > 0 && [5, 10, 15].indexOf(warn) < 0) mins.push(warn);
+    mins = mins.concat([5, 10, 15]);
+    var h = '<button class="ack" onclick="ackAll()">ACKNOWLEDGE</button>';
+    for (var i = 0; i < mins.length; i++) {
+      var hot = (warn > 0 && mins[i] === warn);
+      h += '<button onclick="snoozeAll(' + mins[i] + ')"' + (hot ? ' style="border-width:5px"' : '') + '>Snooze ' + mins[i] + (hot && pre > 0 ? ' (= on time)' : '') + '</button>';
+    }
+    document.getElementById('oBtns').innerHTML = h;
+  }
+  function showOverlay(title, when, notes, pre, warn) {
+    var ov = document.getElementById('overlay');
+    document.getElementById('oTitle').textContent = (pre ? 'IN ' + pre + ' MIN: ' : '') + title;
+    document.getElementById('oWhen').textContent = when || '';
+    document.getElementById('oNotes').textContent = notes || '';
+    buildSnoozeButtons(pre || 0, warn || 0);
+    ov.className = 'show flash';
+    startSiren();
+    if (SENTINEL) {
+      expandToScreen();
+      try { window.focus(); } catch (e) {}
+    }
+    startKeepFront();
+    try {
+      if (window.Notification && Notification.permission === 'granted') {
+        new Notification('DESK LOG: ' + title, { body: notes || when || '', requireInteraction: true });
+      }
+    } catch (e) {}
+  }
+  function hideOverlay() {
+    document.getElementById('overlay').className = '';
+    stopSiren();
+    stopKeepFront();
+    if (SENTINEL) shrinkBack();
+  }
+  // While an alarm is live, keep bringing the alert windows back to the front
+  var frontTimer = null;
+  function startKeepFront() {
+    stopKeepFront();
+    if (!settings.keepFront) return;
+    frontTimer = setInterval(function () {
+      try { window.focus(); } catch (e) {}
+      if (!SENTINEL) {
+        for (var i = 0; i < sentinels.length; i++) {
+          try { if (sentinels[i] && !sentinels[i].closed) sentinels[i].focus(); } catch (e) {}
+        }
+      }
+    }, 1000);
+  }
+  function stopKeepFront() {
+    if (frontTimer) { clearInterval(frontTimer); frontTimer = null; }
+  }
+
+  // ---------- Alarm engine (main window only) ----------
+  function tick() {
+    var now = Date.now();
+    var dn = new Date();
+    document.getElementById('clock').textContent = fmtTime(dn);
+    document.getElementById('clockZ').textContent = fmtZ(dn);
+    document.getElementById('nowL').textContent = pad(dn.getHours()) + ':' + pad(dn.getMinutes()) + ':' + pad(dn.getSeconds());
+    document.getElementById('nowZ').textContent = pad(dn.getUTCHours()) + ':' + pad(dn.getUTCMinutes()) + ':' + pad(dn.getUTCSeconds());
+    updateFireIn();
+    document.getElementById('winCount').textContent = liveSentinels() + ' alert window(s) connected';
+    updateGuide();
+    qTick();
+    var changed = false;
+    for (var i = alarms.length - 1; i >= 0; i--) {
+      var a = alarms[i];
+      if (a.muted || !inSeason(a, a.at)) {
+        // muted or off season: pass quietly - roll repeaters forward (and unmute them), drop one-time ones
+        if (now >= a.at) {
+          changed = true;
+          if (!reschedule(a)) alarms.splice(i, 1);
+          else a.muted = false;   // mute covers one occurrence only
+        }
+        continue;
+      }
+      // early warning
+      // one alarm per reminder: at the early time if one is set, otherwise at the alarm time
+      if (!a.fired && now >= a.at - (a.pre || 0) * 60000) {
+        a.fired = true; a.preFired = true; changed = true;
+        fire(a, a.pre > 0);
+      }
+    }
+    if (changed) save();
+    render();
+  }
+  function fire(a, isPre) {
+    firedNow.push(a.id);
+    var fl = fltLabel(a);
+    var when = (isPre ? 'AT ' + fmtShort(a.at) + ' - ' + a.pre + ' MIN FROM NOW' : 'NOW - ' + fmtShort(a.at)) + '  [' + catLabel(a.cat) + (fl ? ' - ' + fl : '') + ']';
+    showOverlay(a.title, when, a.notes, isPre ? a.pre : 0, a.pre);
+    broadcast({ type: 'fire', title: a.title, when: when, notes: a.notes, pre: isPre ? a.pre : 0, warn: a.pre });
+  }
+  function ackAll() {
+    hideOverlay();
+    broadcast({ type: 'ack' });
+    if (SENTINEL) return;      // main window receives the ack and resolves alarms
+    // resolve fired alarms: repeat -> reschedule, else remove
+    for (var i = alarms.length - 1; i >= 0; i--) {
+      var a = alarms[i];
+      if (firedNow.indexOf(a.id) < 0) continue;
+      if (settings.padLogAcks && a.id !== 'test') padAppend(a.title.replace(/ \(snoozed\)$/, '') + ' - acked');
+      if (!reschedule(a)) alarms.splice(i, 1);
+    }
+    firedNow = [];
+    save(); render();
+  }
+  function snoozeAll(mins) {
+    hideOverlay();
+    if (SENTINEL) { broadcast({ type: 'snooze', mins: mins }); return; }
+    broadcast({ type: 'ack' });
+    var now = Date.now();
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (firedNow.indexOf(a.id) < 0) continue;
+      if (a.fired) {
+        a.at = now + mins * 60000; a.pre = 0; a.fired = false; a.preFired = true;   // snoozed: fires exactly then
+        a.title = a.title.indexOf('(snoozed)') < 0 ? a.title + ' (snoozed)' : a.title;
+      }
+    }
+    firedNow = [];
+    save(); render();
+  }
+
+  // ---------- UI ----------
+  function render() {
+    var el = document.getElementById('list');
+    if (!el) return;
+    var list = alarms.slice().sort(function (a, b) { return a.at - b.at; });
+    if (!list.length) { el.innerHTML = '<div class="empty">No reminders scheduled.</div>'; return; }
+    var now = Date.now();
+    var endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999); endOfToday = endOfToday.getTime();
+    var today = [], later = [];
+    for (var t0 = 0; t0 < list.length; t0++) ((list[t0].at - (list[t0].pre || 0) * 60000) <= endOfToday ? today : later).push(list[t0]);
+    var head = '<table><tr><th>Reminder</th><th></th><th>Alarm</th><th>In</th><th>Repeat</th><th>Triggers Alarm</th><th>Cat</th><th></th></tr>';
+    var h = '<div class="bucket">TODAY - ' + today.length + ' left</div>';
+    h += today.length ? head + rowsHtml(today, now) + '</table>' : '<div class="empty">Nothing more today.</div>';
+    h += '<div class="bucket clickable" onclick="toggleLater()">' + (laterOpen ? '&#9660;' : '&#9654;') + ' TOMORROW AND LATER - ' + later.length + ' (click to ' + (laterOpen ? 'collapse' : 'expand') + ')</div>';
+    if (laterOpen) h += later.length ? head + rowsHtml(later, now) + '</table>' : '<div class="empty">Nothing scheduled past today.</div>';
+    el.innerHTML = h;
+    wireListButtons(el);
+  }
+  var laterOpen = false;
+  function toggleLater() { laterOpen = !laterOpen; render(); }
+  // ---------- Shift Notepad (personal, saved in the I: file) ----------
+  var PAD_KEY = 'occDeskAlarmPad';
+  var notes = { text: '', started: '', archive: [] };   // archive: [{date, text}], newest first, max 14
+  function padStampText() {
+    var d = new Date();
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + String(d.getFullYear()).slice(2) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + 'L / ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()) + 'Z - ';
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function padLoad() {
+    try { var p = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (p && typeof p === 'object') padApply(p); } catch (e) {}
+  }
+  function padApply(p) {
+    if (!p || typeof p !== 'object') return;
+    notes.text = typeof p.text === 'string' ? p.text : '';
+    notes.started = typeof p.started === 'string' ? p.started : '';
+    notes.archive = Array.isArray(p.archive) ? p.archive.slice(0, 14) : [];
+    var ta = document.getElementById('padText'); if (ta) ta.value = notes.text;
+    padRenderArchive(); updateNotesCount();
+  }
+  function padSave() {
+    try { localStorage.setItem(PAD_KEY, JSON.stringify(notes)); } catch (e) {}
+    dirty = true;
+    scheduleFileSave();
+  }
+  // Undo / redo for the shift log: snapshots of the whole text, grouped so one keystroke run = one step
+  var padHist = [], padRedoStack = [], padHistTimer = null, padLastSnap = null;
+  function padSnapshot() {
+    // called before a change: push the current (pre-change) text once per burst of typing
+    if (padHistTimer) return;
+    var cur = notes.text;
+    if (padLastSnap !== cur) { padHist.push(cur); if (padHist.length > 50) padHist.shift(); padLastSnap = cur; }
+    padRedoStack = [];
+    padHistTimer = setTimeout(function () { padHistTimer = null; }, 800);
+    padUndoButtons();
+  }
+  function padUndo() {
+    if (!padHist.length) return;
+    padRedoStack.push(notes.text);
+    var prev = padHist.pop();
+    padLastSnap = prev;
+    notes.text = prev;
+    document.getElementById('padText').value = prev;
+    if (!notes.started && prev.trim()) notes.started = new Date().toISOString();
+    padSave();
+    document.getElementById('padStatus').textContent = 'Undone (' + padHist.length + ' more).';
+    updateNotesCount(); padUndoButtons();
+  }
+  function padRedo() {
+    if (!padRedoStack.length) return;
+    padHist.push(notes.text);
+    var nxt = padRedoStack.pop();
+    padLastSnap = nxt;
+    notes.text = nxt;
+    document.getElementById('padText').value = nxt;
+    padSave();
+    document.getElementById('padStatus').textContent = 'Redone.';
+    updateNotesCount(); padUndoButtons();
+  }
+  function padLogKey(ev) {
+    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z')) { ev.preventDefault(); padUndo(); }
+    else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'y' || ev.key === 'Y' || (ev.shiftKey && (ev.key === 'z' || ev.key === 'Z')))) { ev.preventDefault(); padRedo(); }
+  }
+  function padClearAll() {
+    if (!notes.text.trim()) { document.getElementById('padStatus').textContent = 'The log is already empty.'; return; }
+    var n = notes.text.split('\n').filter(function (l) { return l.trim(); }).length;
+    if (!confirm('Clear all ' + n + ' note(s) from the shift log?\n\nThey are NOT archived. Undo can bring them back while this page stays open.')) return;
+    padHist.push(notes.text); if (padHist.length > 50) padHist.shift(); padRedoStack = []; padLastSnap = '';
+    notes.text = '';
+    document.getElementById('padText').value = '';
+    padSave(); updateNotesCount(); padUndoButtons();
+    document.getElementById('padStatus').textContent = 'Log cleared. Click Undo if that was a mistake.';
+  }
+  function padUndoButtons() {
+    var u = document.getElementById('padUndoBtn'), r = document.getElementById('padRedoBtn');
+    if (u) u.disabled = !padHist.length;
+    if (r) r.disabled = !padRedoStack.length;
+  }
+  function padChanged() {
+    padSnapshot();
+    var before = notes.text;
+    notes.text = document.getElementById('padText').value;
+    if (!notes.started && notes.text.trim()) notes.started = new Date().toISOString();
+    padSave();
+    if (before.length - notes.text.length > 20) {
+      document.getElementById('padStatus').textContent = 'Text removed from the log - click Undo (above the log) to put it back.';
+      updateNotesCount(); return;
+    }
+    document.getElementById('padStatus').textContent = notes.text.trim().length ? notes.text.split('\n').filter(function (l) { return l.trim(); }).length + ' note(s) this shift' : '';
+    updateNotesCount();
+  }
+  function padInsert(txt) {
+    var ta = document.getElementById('padText');
+    var st = ta.selectionStart, en = ta.selectionEnd, v = ta.value;
+    // if not at the start of a line, go to a new line first
+    var needNl = st > 0 && v.charAt(st - 1) !== '\n';
+    var ins = (needNl ? '\n' : '') + txt;
+    ta.value = v.slice(0, st) + ins + v.slice(en);
+    ta.selectionStart = ta.selectionEnd = st + ins.length;
+    ta.focus();
+    padChanged();
+  }
+  // Entry box: stamps itself on the first keystroke; Enter or Add commits it to the log
+  var entryStamped = false;
+  function padEntryInput() {
+    var e = document.getElementById('padEntry');
+    if (!entryStamped && e.value.length) {
+      var typed = e.value;
+      e.value = padStampText() + typed;
+      e.selectionStart = e.selectionEnd = e.value.length;
+      entryStamped = true;
+    }
+    if (!e.value.length) entryStamped = false;
+  }
+  function padEntryKey(ev) {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); padAddEntry(); }
+  }
+  function padAddEntry() {
+    var e = document.getElementById('padEntry');
+    var txt = e.value.trim();
+    if (!txt) { e.focus(); return; }
+    padAutoArchive();
+    var ta = document.getElementById('padText');
+    var v = ta.value;
+    ta.value = v + (v.length && v.charAt(v.length - 1) !== '\n' ? '\n' : '') + txt + '\n';
+    ta.scrollTop = ta.scrollHeight;
+    e.value = ''; entryStamped = false;
+    padChanged();
+    e.focus();
+    document.getElementById('padStatus').textContent = 'Saved. ' + ta.value.split('\n').filter(function (l) { return l.trim(); }).length + ' note(s) this shift.';
+  }
+  // + Time Stamp: into the entry box (new line if mid-text), so one note can carry several times
+  function padStamp() {
+    var e = document.getElementById('padEntry');
+    var st = e.selectionStart, en = e.selectionEnd, v = e.value;
+    var needNl = st > 0 && v.charAt(st - 1) !== '\n';
+    var ins = (needNl ? '\n' : '') + padStampText();
+    e.value = v.slice(0, st) + ins + v.slice(en);
+    e.selectionStart = e.selectionEnd = st + ins.length;
+    entryStamped = true;
+    e.focus();
+  }
+  function padAppend(line) {   // used by ACK logging and alert-window notes: always at the end on its own line
+    padAutoArchive();
+    var ta = document.getElementById('padText');
+    var v = ta.value;
+    ta.value = v + (v.length && v.charAt(v.length - 1) !== '\n' ? '\n' : '') + padStampText() + line + '\n';
+    padChanged();
+  }
+  function padCopy() {
+    var ta = document.getElementById('padText');
+    var txt = ta.value;
+    if (!txt.trim()) { document.getElementById('padStatus').textContent = 'Nothing to copy yet.'; return; }
+    var done = function () { document.getElementById('padStatus').textContent = 'Copied ' + txt.split('\n').length + ' line(s) - paste into your SOCR.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () { ta.select(); document.execCommand('copy'); done(); });
+    else { ta.select(); try { document.execCommand('copy'); } catch (e) {} done(); }
+  }
+  var SHIFT_STALE_MS = 14 * 3600000;   // notes older than this belong to a previous shift
+  function padArchiveNow(reason) {
+    if (!notes.text.trim()) return false;
+    var d = notes.started ? new Date(notes.started) : new Date();
+    var label = pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + 'L';
+    notes.archive.unshift({ date: label, text: notes.text });
+    notes.archive = notes.archive.slice(0, 14);
+    padHist.push(notes.text); if (padHist.length > 50) padHist.shift(); padRedoStack = []; padLastSnap = '';
+    notes.text = ''; notes.started = '';
+    var ta = document.getElementById('padText'); if (ta) ta.value = '';
+    padSave(); padRenderArchive(); updateNotesCount(); padUndoButtons();
+    var st = document.getElementById('padStatus'); if (st) st.textContent = reason || 'Archived. Pad is blank for the new shift.';
+    return true;
+  }
+  function padNewShift() {
+    if (!notes.text.trim()) { document.getElementById('padStatus').textContent = 'Pad is already empty.'; return; }
+    if (!confirm('Move these notes to Past shifts and start a blank pad?')) return;
+    padArchiveNow();
+  }
+  // Safety net: if the pad holds notes from a shift that started 14+ hours ago, archive them first
+  function padAutoArchive() {
+    if (!notes.text.trim() || !notes.started) return false;
+    var age = Date.now() - new Date(notes.started).getTime();
+    if (isNaN(age) || age < SHIFT_STALE_MS) return false;
+    padArchiveNow('Previous shift\'s notes were moved to Past shifts automatically.');
+    return true;
+  }
+  function padToggleArchive() {
+    var a = document.getElementById('padArchive');
+    var open = a.style.display === 'none';
+    a.style.display = open ? 'block' : 'none';
+    document.getElementById('padArchBtn').className = 'small' + (open ? ' on' : '');
+  }
+  function padRenderArchive() {
+    var a = document.getElementById('padArchive');
+    if (!a) return;
+    if (!notes.archive.length) { a.innerHTML = '<div class="hint">No past shifts saved yet.</div>'; return; }
+    var h = '';
+    for (var i = 0; i < notes.archive.length; i++) {
+      h += '<div class="arch"><div class="ah" data-ai="' + i + '">Shift started ' + esc(notes.archive[i].date) + ' - click to copy</div><pre>' + esc(notes.archive[i].text) + '</pre></div>';
+    }
+    a.innerHTML = h;
+    var hs = a.querySelectorAll('.ah');
+    for (var j = 0; j < hs.length; j++) hs[j].onclick = function () {
+      var t = notes.archive[parseInt(this.getAttribute('data-ai'), 10)].text;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t);
+      document.getElementById('padStatus').textContent = 'Copied that shift.';
+    };
+  }
+  function padSettingChanged() {
+    settings.padLogAcks = document.getElementById('padLogAcks').checked;
+    saveSettings();
+  }
+  // ---------- Screen captures (personal, shrunk, in the I: file) ----------
+  var CAPS_KEY = 'occDeskAlarmCaps';
+  var CAP_MAX = 30, CAP_PX = 1280, CAP_Q = 0.8;
+  var caps = { items: [], archive: [] };   // items: [{id, at, caption, data}], newest first; archive: [{date, items}]
+  function capsLoad() {
+    try { var c = JSON.parse(localStorage.getItem(CAPS_KEY) || 'null'); if (c && typeof c === 'object') capsApply(c); } catch (e) {}
+  }
+  function capsApply(c) {
+    if (!c || typeof c !== 'object') return;
+    caps.items = Array.isArray(c.items) ? c.items.filter(function (x) { return x && typeof x.data === 'string' && x.data.indexOf('data:image/') === 0; }).slice(0, CAP_MAX) : [];
+    caps.archive = Array.isArray(c.archive) ? c.archive.slice(0, 7) : [];
+    capsRender();
+  }
+  function capsSave() {
+    try { localStorage.setItem(CAPS_KEY, JSON.stringify(caps)); } catch (e) { /* too big for browser storage - the file still gets it */ }
+    dirty = true;
+    scheduleFileSave();
+  }
+  function capAddBlob(blob) {
+    capAutoArchive();
+    var r = new FileReader();
+    r.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        if (w > CAP_PX || h > CAP_PX) { var k = CAP_PX / Math.max(w, h); w = Math.round(w * k); h = Math.round(h * k); }
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        var capEl = document.getElementById('capCaption');
+        caps.items.unshift({ id: uid(), at: Date.now(), caption: capEl.value.trim(), data: c.toDataURL('image/jpeg', CAP_Q) });
+        caps.items = caps.items.slice(0, CAP_MAX);
+        capEl.value = '';
+        capsSave(); capsRender();
+        document.getElementById('capStatus').textContent = 'Saved capture ' + caps.items.length + '/' + CAP_MAX + ' (' + Math.round(caps.items[0].data.length * 0.75 / 1024) + ' KB)';
+      };
+      img.onerror = function () { document.getElementById('capStatus').textContent = 'That was not an image.'; };
+      img.src = r.result;
+    };
+    r.readAsDataURL(blob);
+  }
+  function capPaste(ev) {
+    var items = ev.clipboardData && ev.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image/') === 0) { ev.preventDefault(); capAddBlob(items[i].getAsFile()); return; }
+    }
+    document.getElementById('capStatus').textContent = 'Nothing on the clipboard looks like a picture. Snip first (Win+Shift+S), then Ctrl+V.';
+  }
+  function capFilePicked(input) {
+    var f = input.files && input.files[0];
+    if (f) capAddBlob(f);
+    input.value = '';
+  }
+  function capStamp(ms) {
+    var d = new Date(ms);
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + String(d.getFullYear()).slice(2) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + 'L / ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()) + 'Z';
+  }
+  function capsRender() {
+    var g = document.getElementById('capGrid');
+    if (!g) return;
+    var cnt = document.getElementById('capsCount'); if (cnt) cnt.textContent = caps.items.length ? '(' + caps.items.length + ')' : '';
+    if (!caps.items.length) { g.innerHTML = '<div class="empty">No captures yet this shift.</div>'; return; }
+    var h = '';
+    for (var i = 0; i < caps.items.length; i++) {
+      var c = caps.items[i];
+      h += '<div class="cap"><img src="' + c.data + '" data-view="' + i + '" alt="capture">' +
+        '<div class="capt"><b>' + capStamp(c.at) + '</b>' + (c.caption ? '<br>' + esc(c.caption) : '') + '</div>' +
+        '<div class="capbtns"><button class="small" data-capcap="' + i + '">Caption</button><button class="small" data-capcopy="' + i + '">Copy</button><button class="small danger" data-capdel="' + i + '">X</button></div></div>';
+    }
+    g.innerHTML = h;
+    var imgs = g.querySelectorAll('img[data-view]');
+    for (var a = 0; a < imgs.length; a++) imgs[a].onclick = function () { capOpenView(parseInt(this.getAttribute('data-view'), 10)); };
+    var dels = g.querySelectorAll('button[data-capdel]');
+    for (var b = 0; b < dels.length; b++) dels[b].onclick = function () { caps.items.splice(parseInt(this.getAttribute('data-capdel'), 10), 1); capsSave(); capsRender(); };
+    var cc = g.querySelectorAll('button[data-capcap]');
+    for (var d = 0; d < cc.length; d++) cc[d].onclick = function () {
+      var i = parseInt(this.getAttribute('data-capcap'), 10);
+      var t = prompt('Caption for this capture:', caps.items[i].caption || '');
+      if (t !== null) { caps.items[i].caption = t.trim(); capsSave(); capsRender(); }
+    };
+    var cp = g.querySelectorAll('button[data-capcopy]');
+    for (var e = 0; e < cp.length; e++) cp[e].onclick = function () { capCopy(parseInt(this.getAttribute('data-capcopy'), 10)); };
+  }
+  function capOpenView(i) {
+    var c = caps.items[i]; if (!c) return;
+    document.getElementById('capViewImg').src = c.data;
+    document.getElementById('capViewCap').textContent = capStamp(c.at) + (c.caption ? ' - ' + c.caption : '');
+    document.getElementById('capView').className = 'show';
+  }
+  function capCloseView() { document.getElementById('capView').className = ''; }
+  // Copy a capture back to the clipboard as PNG so it can be pasted into email / Teams / SOCR
+  function capCopy(i) {
+    var c = caps.items[i]; if (!c) return;
+    var st = document.getElementById('capStatus');
+    if (!(navigator.clipboard && window.ClipboardItem)) { st.textContent = 'Copy not supported here - open it and use the browser copy image instead.'; return; }
+    var img = new Image();
+    img.onload = function () {
+      var cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+      cv.getContext('2d').drawImage(img, 0, 0);
+      cv.toBlob(function (blob) {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(function () { st.textContent = 'Copied to clipboard - paste it where you need it.'; }, function () { st.textContent = 'Copy failed.'; });
+      }, 'image/png');
+    };
+    img.src = c.data;
+  }
+  function capArchiveNow(reason) {
+    if (!caps.items.length) return false;
+    var oldest = caps.items[caps.items.length - 1].at;
+    caps.archive.unshift({ date: capStamp(oldest), items: caps.items.slice(0, 10) });   // keep the file sane
+    caps.archive = caps.archive.slice(0, 3);
+    caps.items = [];
+    capsSave(); capsRender(); capsRenderArchive();
+    var st = document.getElementById('capStatus'); if (st) st.textContent = reason || 'Archived (last 3 shifts kept, 10 captures each).';
+    return true;
+  }
+  function capNewShift() {
+    if (!caps.items.length) { document.getElementById('capStatus').textContent = 'No captures to archive.'; return; }
+    if (!confirm('Move this shift\'s captures to Past shifts and start fresh?')) return;
+    capArchiveNow();
+  }
+  function capAutoArchive() {
+    if (!caps.items.length) return false;
+    var oldest = caps.items[caps.items.length - 1].at;
+    if (Date.now() - oldest < SHIFT_STALE_MS) return false;
+    capArchiveNow('Previous shift\'s captures were moved to Past shifts automatically.');
+    return true;
+  }
+  function capToggleArchive() {
+    var a = document.getElementById('capArchive');
+    var open = a.style.display === 'none';
+    a.style.display = open ? 'block' : 'none';
+    document.getElementById('capArchBtn').className = 'small' + (open ? ' on' : '');
+    if (open) capsRenderArchive();
+  }
+  function capsRenderArchive() {
+    var a = document.getElementById('capArchive');
+    if (!a) return;
+    if (!caps.archive.length) { a.innerHTML = '<div class="hint">No past shifts saved yet.</div>'; return; }
+    var h = '';
+    for (var i = 0; i < caps.archive.length; i++) {
+      var sh = caps.archive[i];
+      h += '<div class="arch"><div class="ah">Shift archived ' + esc(sh.date) + ' - ' + sh.items.length + ' capture(s)</div><div class="capgrid">';
+      for (var j = 0; j < sh.items.length; j++) {
+        var c = sh.items[j];
+        h += '<div class="cap"><img src="' + c.data + '" data-aview="' + i + ':' + j + '" alt="capture"><div class="capt"><b>' + capStamp(c.at) + '</b>' + (c.caption ? '<br>' + esc(c.caption) : '') + '</div></div>';
+      }
+      h += '</div></div>';
+    }
+    a.innerHTML = h;
+    var imgs = a.querySelectorAll('img[data-aview]');
+    for (var k = 0; k < imgs.length; k++) imgs[k].onclick = function () {
+      var p = this.getAttribute('data-aview').split(':');
+      var c = caps.archive[parseInt(p[0], 10)].items[parseInt(p[1], 10)];
+      document.getElementById('capViewImg').src = c.data;
+      document.getElementById('capViewCap').textContent = capStamp(c.at) + (c.caption ? ' - ' + c.caption : '');
+      document.getElementById('capView').className = 'show';
+    };
+  }
+  // drag an image file onto the capture box
+  function capsSetupDrop() {
+    var box = document.getElementById('capDrop');
+    if (!box) return;
+    box.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); });
+    box.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f && f.type.indexOf('image/') === 0) capAddBlob(f);
+    });
+  }
+
+  var NOTE_W = 520, NOTE_H = 300;
+  function sentinelNotes() {
+    // take the note right here in the alert window - the main page may be buried
+    document.body.className = 'sentinel noting';
+    document.getElementById('sNoteStamp').textContent = padStampText().replace(/ - $/, '');
+    try {
+      var l = (screen.availLeft !== undefined) ? screen.availLeft : 0;
+      var t = (screen.availTop !== undefined) ? screen.availTop : 0;
+      window.resizeTo(NOTE_W, NOTE_H);
+      window.moveTo(l + screen.availWidth - NOTE_W - 10, t + screen.availHeight - NOTE_H - 10);
+    } catch (e) {}
+    var ta = document.getElementById('sNoteText');
+    ta.value = ''; document.getElementById('sNoteStatus').textContent = '';
+    try { window.focus(); } catch (e) {}
+    setTimeout(function () { ta.focus(); }, 50);
+    // also ask the main page to switch to Notes, for when it is visible
+    broadcast({ type: 'notes' });
+  }
+  function sNoteKey(ev) { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); sNoteSave(); } if (ev.key === 'Escape') sNoteClose(); }
+  function sNoteSave() {
+    var txt = document.getElementById('sNoteText').value.trim();
+    if (!txt) { document.getElementById('sNoteText').focus(); return; }
+    broadcast({ type: 'note', text: txt, nid: uid() });
+    document.getElementById('sNoteStatus').textContent = 'Saved.';
+    setTimeout(sNoteClose, 400);
+  }
+  function sNoteClose() {
+    document.body.className = 'sentinel';
+    shrinkBack();
+  }
+  function jumpToNotes() {
+    showTab('notes');
+    try { window.focus(); } catch (e) {}
+    var e = document.getElementById('padEntry');
+    if (e) { e.focus(); e.scrollIntoView({ block: 'center' }); }
+  }
+
+  // ---------- Help ----------
+  function openHelp() { document.getElementById('help').className = 'show'; document.querySelector('.helpbody').scrollTop = 0; }
+  function closeHelp() { document.getElementById('help').className = ''; }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.getElementById('help').className === 'show') closeHelp(); });
+
+  // ---------- Tabs ----------
+  var curTab = 'alarms';
+  var TABS = ['alarms', 'notes', 'caps'];
+  var TAB_IDS = { alarms: ['paneAlarms', 'tabAlarms'], notes: ['paneNotes', 'tabNotes'], caps: ['paneCaps', 'tabCaps'] };
+  function showTab(name) {
+    if (TABS.indexOf(name) < 0) name = 'alarms';
+    curTab = name;
+    for (var i = 0; i < TABS.length; i++) {
+      document.getElementById(TAB_IDS[TABS[i]][0]).style.display = TABS[i] === name ? 'block' : 'none';
+      document.getElementById(TAB_IDS[TABS[i]][1]).className = 'tab' + (TABS[i] === name ? ' sel' : '');
+    }
+    if (name === 'notes') { var e = document.getElementById('padEntry'); if (e) e.focus(); }
+    if (name === 'caps') { var cd = document.getElementById('capDrop'); if (cd) cd.focus(); }
+
+  }
+  function updateNotesCount() {
+    var n = notes.text.trim().length ? notes.text.split('\n').filter(function (l) { return l.trim(); }).length : 0;
+    var el = document.getElementById('notesCount'); if (el) el.textContent = n ? '(' + n + ')' : '';
+  }
+
+  // ---------- Quick Add (one-time, on-time, local) ----------
+  var qAt = 0;
+  function qShow() {
+    var d = new Date(qAt);
+    document.getElementById('qTime').innerHTML = pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L <span class="z">' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z</span> <span class="z">(' + (qTouched ? countdown(qAt) : 'now') + ')</span>';
+  }
+  var qTouched = false;   // false = tracking the clock; true = user picked a time
+  var qHist = [];         // previous picks, newest last, for Undo
+  function qPush() { qHist.push({ at: qAt, touched: qTouched }); if (qHist.length > 50) qHist.shift(); }
+  function qUndo() {
+    if (!qHist.length) return;
+    var prev = qHist.pop();
+    qAt = prev.at; qTouched = prev.touched;
+    if (!qTouched) qTick(); else qShow();
+  }
+  function qReset() { var d = new Date(); d.setSeconds(0, 0); qAt = d.getTime(); qTouched = false; qHist = []; qShow(); }
+  function qTick() { if (!qTouched) { var d = new Date(); d.setSeconds(0, 0); qAt = d.getTime(); } qShow(); }
+  function qPlus(mins) { if (!qAt) qReset(); qPush(); qTouched = true; qAt += mins * 60000; qShow(); }
+  // snap to the next :MM mark after the current pick (so repeated clicks keep stepping forward)
+  function qSnap(minute) {
+    if (!qAt) qReset();
+    qPush();
+    qTouched = true;
+    var d = new Date(qAt); d.setSeconds(0, 0);
+    if (d.getMinutes() >= minute) d.setHours(d.getHours() + 1);
+    d.setMinutes(minute);
+    qAt = d.getTime(); qShow();
+  }
+  function quickAdd() {
+    if (!qAt) qReset();
+    if (!qTouched) { alert('Pick a time first: +1, +5, +15, :15, :30, :45 or Next Hour.'); return; }
+    if (qAt <= Date.now()) { alert('That time has already passed. Add a minute or two.'); return; }
+    var title = document.getElementById('qTitle').value.trim() || 'Reminder';
+    var a = { id: uid(), cat: 'other', flt: '', fltNo: '', tail: '', orig: '', dest: '',
+      at: qAt, pre: 0, repeat: 'none', tz: 'L',
+      months: [true, true, true, true, true, true, true, true, true, true, true, true], season: null,
+      notes: '', muted: false, fired: false, preFired: false, title: title };
+    alarms.push(a);
+    save(); render();
+    document.getElementById('qTitle').value = '';
+    qReset();
+    document.getElementById('status').textContent = 'Quick added: ' + title + ' at ' + fmtShort(a.at);
+    requestNotify();
+  }
+  function fmtTrig(d, tz) { return tz === 'Z' ? pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z' : pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L'; }
+  function rowsHtml(list, now) {
+    var h = '';
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      var hasDates = a.season && a.season.from && a.season.to;
+      var seasonal = hasDates || (a.months && a.months.length === 12 && !allMonths(a.months));
+      var offNow = seasonal && !inSeason(a, now);
+      var trig = a.at - (a.pre || 0) * 60000;
+      var cls = a.muted ? 'muted' : (offNow ? 'offseason' : (trig <= now ? 'due' : (trig - now < 10 * 60000 ? 'soon' : '')));
+      if (a.repeat === 'none') cls += ' onetime';
+      var seasonTxt = hasDates ? seasonLabel(a.season) : (seasonal ? monthsLabel(a.months) : '');
+      var rep = (REPEAT_NAMES[a.repeat] || 'one time') + (seasonal ? '<br><span class="notes">' + seasonTxt + ' only</span>' : '');
+      var d = new Date(a.at);
+      var flags = [];
+      if (a.muted) flags.push('MUTED for this one - unmutes at the next occurrence');
+      if (offNow) flags.push('off season now - next fires ' + fmtDateL(new Date(a.at)));
+      if (/\(snoozed\)$/.test(a.title)) flags.push('snoozed');
+      h += '<tr class="' + cls + '">' +
+        '<td style="font-size:15px; font-weight:bold">' + esc(a.title) + (a.notes ? '<div class="notes" style="font-weight:normal">' + esc(a.notes) + '</div>' : '') +
+        (flags.length ? '<div class="notes" style="color:var(--warn); font-weight:normal">' + flags.join(' | ') + '</div>' : '') + '</td>' +
+        '<td><button class="small' + (a.muted ? ' on' : '') + '" data-mute="' + a.id + '" title="' + (a.muted ? 'Unmute' : 'Mute this occurrence only - it comes back unmuted next time') + '">' + (a.muted ? 'Unmute' : 'Mute') + '</button></td>' +
+        '<td>' + (a.tz === 'Z'
+          ? pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L <b style="color:var(--warn)">' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z</b>'
+          : '<b style="color:var(--accent)">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L</b> ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z') +
+        '<br><span class="notes">' + fmtDateL(d) + ' - ' + (a.tz === 'Z' ? 'Zulu' : 'local') + ' controls</span></td>' +
+        '<td class="countdown">' + (a.muted ? 'MUTED' : countdown(a.at - (a.pre || 0) * 60000)) + '</td>' +
+        '<td>' + rep + '</td>' +
+        '<td>' + (a.pre > 0
+          ? a.pre + ' min before<br><span class="notes">at ' + fmtTrig(new Date(a.at - a.pre * 60000), a.tz) + '</span>'
+          : 'On time<br><span class="notes">at ' + fmtTrig(d, a.tz) + '</span>') + '</td>' +
+        '<td><span class="tag ' + a.cat + '">' + catLabel(a.cat) + '</span>' +
+        (fltLabel(a) ? '<br><span class="tag flt">' + esc(fltLabel(a)) + '</span>' : '') + '</td>' +
+        '<td style="white-space:nowrap">' +
+        '<button class="small' + (a.muted ? ' on' : '') + '" data-mute="' + a.id + '" title="' + (a.muted ? 'Unmute' : 'Mute this occurrence only - it comes back unmuted next time') + '">' + (a.muted ? 'Unmute' : 'Mute') + '</button> ' +
+        '<button class="small" data-ack="' + a.id + '" title="' + (a.repeat === 'none' ? 'Handled - remove this one-time alarm' : 'Handled - skip to the next time it is due') + '">ACK</button> ' +
+        '<button class="small' + (editingId === a.id ? ' on' : '') + '" data-edit="' + a.id + '" title="Change this reminder">Edit</button> ' +
+        '<button class="small" data-dup="' + a.id + '" title="Copy into the form - adjust the time, then Add">Duplicate</button> ' +
+        '<button class="small" data-del="' + a.id + '" title="Delete">X</button></td></tr>';
+    }
+    return h;
+  }
+  function wireListButtons(el) {
+    var btns = el.querySelectorAll('button[data-del]');
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = function () { removeAlarm(this.getAttribute('data-del')); };
+    }
+    var mb = el.querySelectorAll('button[data-mute]');
+    for (var k = 0; k < mb.length; k++) {
+      mb[k].onclick = function () { toggleMute(this.getAttribute('data-mute')); };
+    }
+    var db = el.querySelectorAll('button[data-dup]');
+    for (var q = 0; q < db.length; q++) {
+      db[q].onclick = function () { duplicateAlarm(this.getAttribute('data-dup')); };
+    }
+    var ab = el.querySelectorAll('button[data-ack]');
+    for (var u = 0; u < ab.length; u++) {
+      ab[u].onclick = function () { ackOne(this.getAttribute('data-ack')); };
+    }
+    var eb = el.querySelectorAll('button[data-edit]');
+    for (var r = 0; r < eb.length; r++) {
+      eb[r].onclick = function () { editAlarm(this.getAttribute('data-edit')); };
+    }
+  }
+  // Collapse / expand the form column
+  var leftClosed = false;
+  function setLeft(closed) {
+    leftClosed = closed;
+    document.body.classList.toggle('leftclosed', closed);
+    document.getElementById('collapseBtn').innerHTML = closed ? '&gt;&gt;' : '&lt;&lt; Hide';
+  }
+  function toggleLeft() {
+    setLeft(!leftClosed);
+    settings.leftClosed = leftClosed;
+    saveSettings();
+  }
+  function findAlarm(id) {
+    for (var i = 0; i < alarms.length; i++) if (alarms[i].id === id) return alarms[i];
+    return null;
+  }
+  function fillForm(a) {
+    if (leftClosed) setLeft(false);
+    function set(elId, v) { document.getElementById(elId).value = v || ''; }
+    set('fCat', a.cat); catChanged();
+    set('fFlt', a.flt); set('fFltNo', a.fltNo); set('fTail', a.tail); set('fOrig', a.orig); set('fDest', a.dest);
+    set('fTitle', a.title.replace(/ \(snoozed\)$/, ''));
+    set('fNotes', a.notes);
+    set('fPre', a.pre);
+    set('fRepeat', a.repeat || 'none');
+    fireMonths = (a.months && a.months.length === 12) ? a.months.slice() : [true, true, true, true, true, true, true, true, true, true, true, true];
+    setSeasonInputs(a.season && a.season.from ? a.season : null);
+    renderMonths();
+    setTz(a.tz || 'L');
+    setFire(a.at > Date.now() ? a.at : Date.now() + 5 * 60000);
+    document.querySelector('.left').scrollTop = 0;
+    document.getElementById('fLocal').focus();
+  }
+  // Copy a reminder into the form; user adjusts the time (e.g. +1 hr twice) and clicks Add
+  function duplicateAlarm(id) {
+    var a = findAlarm(id);
+    if (!a) return;
+    cancelEdit();
+    fillForm(a);
+    document.getElementById('status').textContent = 'Copied "' + a.title + '" - set the new time, then Add Reminder';
+  }
+  // Edit in place: form loads the reminder, Add button becomes Save Changes
+  var editingId = null;
+  function editAlarm(id) {
+    var a = findAlarm(id);
+    if (!a) return;
+    editingId = id;
+    fillForm(a);
+    document.getElementById('addBtn').textContent = 'Save Changes';
+    document.getElementById('cancelBtn').style.display = 'inline-block';
+    document.getElementById('formTitle').textContent = 'Editing: ' + a.title;
+    document.getElementById('status').textContent = 'Editing "' + a.title + '" - change what you need, then Save Changes';
+    render();
+  }
+  function cancelEdit() {
+    if (!editingId) return;
+    editingId = null;
+    document.getElementById('addBtn').textContent = 'Add Reminder';
+    document.getElementById('cancelBtn').style.display = 'none';
+    document.getElementById('formTitle').textContent = 'New Reminder';
+    clearForm();
+    render();
+  }
+  function clearForm() {
+    var clear = ['fTitle', 'fNotes', 'fFlt', 'fFltNo', 'fTail', 'fOrig', 'fDest'];
+    for (var c = 0; c < clear.length; c++) document.getElementById(clear[c]).value = '';
+    setTz('L');
+    setSeasonInputs(null);
+    setMonths('all');
+    setDefaultTime();
+  }
+  // ACK from the list: handled now, move to the next occurrence (one-time: remove)
+  function ackOne(id) {
+    for (var i = alarms.length - 1; i >= 0; i--) {
+      var a = alarms[i];
+      if (a.id !== id) continue;
+      var title = a.title;
+      if (settings.padLogAcks) padAppend(title.replace(/ \(snoozed\)$/, '') + ' - acked');
+      if (a.repeat === 'none') {
+        alarms.splice(i, 1);
+        document.getElementById('status').textContent = 'Acknowledged and removed: ' + title;
+      } else {
+        // step forward at least once, then keep going until the trigger time is in the future
+        var n = nextOnce(a.at, a.repeat, a.tz);
+        var guard = 0;
+        while (n !== null && ((n - (a.pre || 0) * 60000) <= Date.now() || !inSeason(a, n)) && guard++ < 20000) n = nextOnce(n, a.repeat, a.tz);
+        if (n !== null) { a.at = n; a.fired = false; a.preFired = false; a.muted = false; }
+        a.title = a.title.replace(/ \(snoozed\)$/, '');
+        document.getElementById('status').textContent = 'Acknowledged: ' + title + ' - next ' + fmtShort(a.at);
+      }
+      // if it is flashing right now, clear that too
+      if (firedNow.indexOf(id) >= 0) { firedNow = firedNow.filter(function (x) { return x !== id; }); if (!firedNow.length) { hideOverlay(); broadcast({ type: 'ack' }); } }
+    }
+    save(); render();
+  }
+  function toggleMute(id) {
+    for (var i = 0; i < alarms.length; i++) {
+      if (alarms[i].id === id) {
+        alarms[i].muted = !alarms[i].muted;
+        if (!alarms[i].muted && alarms[i].at <= Date.now()) reschedule(alarms[i]); // unmuting a stale repeater
+        document.getElementById('status').textContent = (alarms[i].muted ? 'Muted: ' : 'Unmuted: ') + alarms[i].title;
+      }
+    }
+    save(); render();
+  }
+  // ---------- Seasonal: which months a reminder may fire in ----------
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var fireMonths = [true, true, true, true, true, true, true, true, true, true, true, true];
+  function buildMonthGrid() {
+    var g = document.getElementById('monthGrid');
+    var h = '';
+    for (var i = 0; i < 12; i++) h += '<button data-mo="' + i + '">' + MONTHS[i] + '</button>';
+    g.innerHTML = h;
+    var b = g.querySelectorAll('button');
+    for (var j = 0; j < b.length; j++) b[j].onclick = function () {
+      var i = parseInt(this.getAttribute('data-mo'), 10);
+      fireMonths[i] = !fireMonths[i];
+      renderMonths();
+    };
+    renderMonths();
+  }
+  function renderMonths() {
+    var g = document.getElementById('monthGrid');
+    if (!g) return;
+    var b = g.querySelectorAll('button');
+    for (var i = 0; i < b.length; i++) b[i].className = fireMonths[i] ? 'sel' : '';
+    var hint = document.getElementById('seasonHint');
+    if (!hint) return;
+    if (fireSeason) hint.textContent = 'Seasonal: fires only from ' + seasonLabel(fireSeason) + ' each year (exact dates win over the month buttons).';
+    else hint.textContent = allMonths(fireMonths) ? 'Fires all year.' : (anyMonth(fireMonths) ? 'Seasonal: fires only in ' + monthsLabel(fireMonths) + '. Other months it stays quiet and rolls forward.' : 'No months picked - it would never fire. Pick at least one.');
+  }
+  function setMonths(kind) {
+    for (var i = 0; i < 12; i++) {
+      if (kind === 'all') fireMonths[i] = true;
+      else if (kind === 'none') fireMonths[i] = false;
+      else if (kind === 'winter') fireMonths[i] = (i >= 9 || i <= 3);
+      else if (kind === 'summer') fireMonths[i] = (i >= 4 && i <= 8);
+    }
+    renderMonths();
+  }
+  function allMonths(m) { for (var i = 0; i < 12; i++) if (!m[i]) return false; return true; }
+  function anyMonth(m) { for (var i = 0; i < 12; i++) if (m[i]) return true; return false; }
+  // "Oct-Apr", "May-Sep", "Jan, Mar, Jul"
+  function monthsLabel(m) {
+    if (allMonths(m)) return 'all year';
+    var runs = [], i = 0, start = -1;
+    // find the start of a run that follows an unchecked month (handles wrap)
+    for (i = 0; i < 12; i++) if (m[i] && !m[(i + 11) % 12]) { start = i; break; }
+    if (start < 0) return 'all year';
+    i = start;
+    do {
+      var j = i;
+      while (m[(j + 1) % 12] && (j + 1) % 12 !== start) j = (j + 1) % 12;
+      runs.push(i === j ? MONTHS[i] : MONTHS[i] + '-' + MONTHS[j]);
+      i = (j + 1) % 12;
+      while (i !== start && !m[i]) i = (i + 1) % 12;
+    } while (i !== start);
+    return runs.join(', ');
+  }
+  // Exact-date season: {from:'MM-DD', to:'MM-DD'}, repeats every year, may wrap over New Year
+  var fireSeason = null;
+  function mmdd(ms) { var d = new Date(ms); return pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function seasonFromInputs() {
+    var f = document.getElementById('fSeasonFrom').value, t = document.getElementById('fSeasonTo').value;
+    var mf = /^\d{4}-(\d{2}-\d{2})$/.exec(f || ''), mt = /^\d{4}-(\d{2}-\d{2})$/.exec(t || '');
+    if (!mf || !mt) return null;
+    return { from: mf[1], to: mt[1] };
+  }
+  function seasonDatesChanged() { fireSeason = seasonFromInputs(); renderMonths(); }
+  function clearSeasonDates() {
+    document.getElementById('fSeasonFrom').value = ''; document.getElementById('fSeasonTo').value = '';
+    fireSeason = null; renderMonths();
+  }
+  function setSeasonInputs(sea) {
+    var y = new Date().getFullYear();
+    document.getElementById('fSeasonFrom').value = sea ? y + '-' + sea.from : '';
+    document.getElementById('fSeasonTo').value = sea ? y + '-' + sea.to : '';
+    fireSeason = sea || null;
+  }
+  function seasonLabel(sea) {
+    function nice(md) { var m = parseInt(md.slice(0, 2), 10), d = parseInt(md.slice(3), 10); return MONTHS[m - 1] + ' ' + d; }
+    return nice(sea.from) + ' to ' + nice(sea.to);
+  }
+  function inDateSeason(sea, ms) {
+    var x = mmdd(ms);
+    if (sea.from <= sea.to) return x >= sea.from && x <= sea.to;   // e.g. May 1 to Sep 30
+    return x >= sea.from || x <= sea.to;                            // wraps: Nov 15 to Mar 31
+  }
+  function inSeason(a, ms) {
+    if (a.season && a.season.from && a.season.to) return inDateSeason(a.season, ms);
+    if (!a.months || a.months.length !== 12 || allMonths(a.months)) return true;
+    return !!a.months[new Date(ms).getMonth()];
+  }
+  // 24 hour buttons: sets fire time to HH:00 local, next occurrence
+  function buildHourGrid() {
+    var g = document.getElementById('hourGrid');
+    var h = '';
+    for (var i = 0; i < 24; i++) h += '<button data-hr="' + i + '">' + pad(i) + '</button>';
+    g.innerHTML = h;
+    var b = g.querySelectorAll('button');
+    for (var j = 0; j < b.length; j++) b[j].onclick = function () { setHour(parseInt(this.getAttribute('data-hr'), 10)); };
+  }
+  function setHour(hr) {
+    setTz('L');
+    var pd = pickedDate();
+    var d = pd ? new Date(pd.y, pd.mo, pd.d) : new Date();
+    d.setHours(hr, 0, 0, 0);
+    if (dateIsToday() && d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1);
+    setFire(d.getTime());
+  }
+  function markHour() {
+    var g = document.getElementById('hourGrid');
+    if (!g) return;
+    var hr = fireAt ? new Date(fireAt).getHours() : -1;
+    var b = g.querySelectorAll('button');
+    for (var i = 0; i < b.length; i++) b[i].className = (parseInt(b[i].getAttribute('data-hr'), 10) === hr) ? 'sel' : '';
+  }
+  function removeAlarm(id) {
+    alarms = alarms.filter(function (a) { return a.id !== id; });
+    save(); render();
+  }
+  function addAlarm() {
+    ensureAudio();
+    function val(id) { return document.getElementById(id).value.trim(); }
+    var cat = val('fCat');
+    var isFlt = cat === 'flight';
+    // make sure a half-typed box is applied before reading the time
+    if (document.activeElement && document.activeElement.id === 'fLocal') localTyped();
+    if (document.activeElement && document.activeElement.id === 'fZulu') zuluTyped();
+    var at = fireAt;
+    if (!at || isNaN(at)) { at = Date.now() + 5 * 60000; }   // nothing set -> 5 min from now
+    var pre = parseInt(val('fPre'), 10); if (isNaN(pre) || pre < 0) pre = 0;
+    var a = {
+      id: uid(), cat: cat,
+      flt: isFlt ? val('fFlt') : '',
+      fltNo: isFlt ? val('fFltNo').toUpperCase() : '',
+      tail: isFlt ? val('fTail').toUpperCase() : '',
+      orig: isFlt ? val('fOrig').toUpperCase() : '',
+      dest: isFlt ? val('fDest').toUpperCase() : '',
+      at: at, pre: pre, repeat: val('fRepeat') || 'none', tz: fireTz,
+      months: fireMonths.slice(), season: fireSeason ? { from: fireSeason.from, to: fireSeason.to } : null,
+      notes: val('fNotes'), muted: false,
+      fired: false, preFired: false
+    };
+    if (!a.season && !anyMonth(a.months)) { alert('Pick at least one month, or click All year.'); return; }
+    if (!inSeason(a, a.at)) {
+      if (a.repeat === 'none') { alert('That date is outside the season you picked. Change the date or the season.'); return; }
+      reschedule(a);
+      a.at = a.at; // rolled to the first in-season date
+    }
+    a.title = val('fTitle') || autoTitle(a);
+    if (editingId) {
+      // replace the existing reminder in place, keeping its id and mute state
+      var old = findAlarm(editingId);
+      if (old) { a.id = old.id; a.muted = !!old.muted; }
+      for (var i = 0; i < alarms.length; i++) if (alarms[i].id === a.id) alarms[i] = a;
+      var savedTitle = a.title;
+      editingId = null;
+      document.getElementById('addBtn').textContent = 'Add Reminder';
+      document.getElementById('cancelBtn').style.display = 'none';
+      document.getElementById('formTitle').textContent = 'New Reminder';
+      save(); clearForm(); render();
+      document.getElementById('status').textContent = 'Saved changes: ' + savedTitle + ' at ' + fmtShort(a.at);
+      return;
+    }
+    alarms.push(a);
+    save(); clearForm(); render();
+    document.getElementById('status').textContent = 'Added: ' + a.title + ' at ' + fmtShort(a.at);
+    requestNotify();
+  }
+  function quickAt(minute) {
+    var d = new Date();
+    d.setSeconds(0, 0);
+    if (d.getMinutes() >= minute) d.setHours(d.getHours() + 1);
+    d.setMinutes(minute);
+    setFire(d.getTime());
+  }
+  function setDefaultTime() { setFire(Date.now() + 5 * 60000); }
+  function testAlarm() {
+    ensureAudio();
+    var a = { id: 'test', title: 'TEST ALARM', cat: 'other', at: Date.now(), pre: 0, notes: 'This is a test. Press ACKNOWLEDGE.' };
+    firedNow.push('test');
+    var when = 'TEST - ' + fmtShort(a.at);
+    showOverlay(a.title, when, a.notes, 0, 0);
+    broadcast({ type: 'fire', title: a.title, when: when, notes: a.notes, pre: 0 });
+  }
+  function clearAll() {
+    if (!confirm('Delete all reminders?')) return;
+    alarms = []; save(); render();
+  }
+  function exportAlarms() {
+    var io = document.getElementById('io');
+    io.style.display = 'block';
+    io.value = dataText();
+    io.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.getElementById('status').textContent = 'Copied / shown below (reminders + settings)';
+  }
+  function importAlarms() {
+    var io = document.getElementById('io');
+    io.style.display = 'block';
+    if (!io.value.trim()) { io.placeholder = 'Paste here, then click Import again.'; io.focus(); return; }
+    var d = parseDataText(io.value);
+    if (!d.alarms.length && !d.settings) { alert('Could not read that. Paste what Export gave you.'); return; }
+    applyLoaded(d, 'paste'); save();
+    io.value = ''; io.style.display = 'none';
+    document.getElementById('status').textContent = 'Imported ' + d.alarms.length + ' reminders' + (d.settings ? ' + settings' : '');
+  }
+  function requestNotify() {
+    try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+  }
+
+  // ---------- Sentinel windows ----------
+  function openSentinels() {
+    ensureAudio();
+    var n = Math.max(1, Math.min(6, parseInt(document.getElementById('fWin').value, 10) || 1));
+    if (n !== settings.windows) { settings.windows = n; saveSettings(); renderSettings(); }
+    var base = location.href.split('?')[0].split('#')[0];
+    var url = base + '?sentinel=1';
+    var opened = 0;
+    function openOne(i, left, top) {
+      var feat = 'popup=yes,width=420,height=260,left=' + left + ',top=' + top + ',menubar=no,toolbar=no,location=no,status=no';
+      var w = window.open(url, 'occSentinel' + i, feat);
+      if (w) { opened++; sentinels[i] = w; }
+    }
+    // Try Window Management API to place one per screen automatically
+    if (window.getScreenDetails) {
+      window.getScreenDetails().then(function (sd) {
+        var screens = sd.screens || [];
+        var k = 0;
+        for (var i = 0; i < screens.length && k < n; i++) {
+          var s = screens[i];
+          openOne(k, s.availLeft + 40, s.availTop + 40); k++;
+        }
+        while (k < n) { openOne(k, 60 + k * 40, 60 + k * 40); k++; }
+        document.getElementById('status').textContent = 'Opened ' + opened + ' alert window(s) - drag each to a monitor';
+      }).catch(function () { openCascade(); });
+    } else {
+      openCascade();
+    }
+    function openCascade() {
+      for (var i = 0; i < n; i++) openOne(i, 60 + i * 40, 60 + i * 40);
+      document.getElementById('status').textContent = opened ? ('Opened ' + opened + ' alert window(s) - drag each to a monitor') : 'Popup blocked - allow popups for this page';
+    }
+  }
+
+  // ---------- Init ----------
+  function init() {
+    setupChannel();
+    if (SENTINEL) {
+      document.body.className = 'sentinel';
+      document.title = 'ALERT WINDOW';
+      setInterval(function () {
+        document.getElementById('sClock').textContent = fmtZ(new Date()) + 'Z';
+        var ok = false;
+        try { ok = !!(window.opener && !window.opener.closed); } catch (e) {}
+        document.getElementById('sStatus').textContent = ok ? 'Linked to Desk Log' : 'LOST LINK - close me and click Open Alert Windows again';
+      }, 1000);
+      document.addEventListener('click', ensureAudio);
+      return;
+    }
+    user = DEFAULT_USER;
+    loadSettings();
+    renderSettings();
+    buildHourGrid();
+    buildMonthGrid();
+    load();
+    if (!alarms.length && localStorage.getItem(keyFor(user)) === null) { loadDefaults(true); }
+    if (!fsSupported()) {
+      var bn = document.getElementById('browserNote');
+      bn.className = 'bnote bad';
+      bn.textContent = 'This browser is not supported. Please open this page in Microsoft Edge or Google Chrome. Saving to your I: file will not work here.';
+    }
+    setupDrop();
+    padLoad();
+    capsLoad();
+    capsSetupDrop();
+    padAutoArchive(); capAutoArchive();
+    setInterval(function () { padAutoArchive(); capAutoArchive(); }, 3600000);
+    qReset();
+    setTz('L');
+    setDefaultTime();
+    catChanged();
+    render();
+    setInterval(tick, 1000);
+    document.addEventListener('click', function () {
+      ensureAudio();
+      document.getElementById('audioHint').textContent = 'Sound enabled.';
+      soundOn = true;
+    }, { once: true });
+    window.onbeforeunload = function () {
+      if (fileHandle && fileSaveTimer) { clearTimeout(fileSaveTimer); fileSaveTimer = null; writeFile(); }   // flush a pending save
+      if (saveFailed) return 'The last save to your file FAILED. Leave anyway?';
+      if (dirty && !fileHandle) return 'You have changes that are not saved to a file. Leave anyway?';
+      return undefined;   // linked and saved (or nothing changed): no nagging
+    };
+    document.getElementById('status').textContent = alarms.length + ' reminder(s) in browser storage';
+    setFileStatus('NOT LINKED - click Open I: File (or drop your ' + DATA_FILE + ' on this page) to load your reminders and turn on auto-save', false);
+  }
+
+  // expose for inline handlers
+  window.addAlarm = addAlarm; window.quickAt = quickAt; window.nudge = nudge;
+  window.testAlarm = testAlarm; window.ackAll = ackAll; window.snoozeAll = snoozeAll;
+  window.openSentinels = openSentinels; window.clearAll = clearAll; window.catChanged = catChanged;
+  window.localTyped = localTyped; window.zuluTyped = zuluTyped; window.setDefaultTime = setDefaultTime;
+  window.toggleAdvanced = toggleAdvanced; window.toggleLater = toggleLater;
+  window.backdropPicked = backdropPicked; window.clearBackdrop = clearBackdrop; window.backdropDimChanged = backdropDimChanged;
+  window.quickAdd = quickAdd; window.qPlus = qPlus; window.qSnap = qSnap; window.qReset = qReset; window.qUndo = qUndo;
+  window.padStamp = padStamp; window.padChanged = padChanged; window.padCopy = padCopy; window.padNewShift = padNewShift;
+  window.padEntryInput = padEntryInput; window.padEntryKey = padEntryKey; window.padAddEntry = padAddEntry;
+  window.padUndo = padUndo; window.padRedo = padRedo; window.padLogKey = padLogKey; window.padClearAll = padClearAll;
+  window.padToggleArchive = padToggleArchive; window.padSettingChanged = padSettingChanged; window.showTab = showTab;
+  window.openHelp = openHelp; window.closeHelp = closeHelp; window.sentinelNotes = sentinelNotes; window.sNoteKey = sNoteKey; window.sNoteSave = sNoteSave; window.sNoteClose = sNoteClose; window.capPaste = capPaste; window.capFilePicked = capFilePicked; window.capNewShift = capNewShift; window.capToggleArchive = capToggleArchive; window.capCloseView = capCloseView;
+  window.openFile = openFile; window.createFile = createFile; window.saveFileNow = saveFileNow;
+  window.guideSound = guideSound; window.guideWindows = guideWindows; window.guideTest = guideTest;
+  window.hideGuide = hideGuide; window.showGuide = showGuide;
+  window.toggleSound = toggleSound; window.paletteChanged = paletteChanged; window.previewPalette = previewPalette;
+  window.guideSkipSound = guideSkipSound; window.cancelEdit = cancelEdit; window.toggleLeft = toggleLeft;
+  window.keepFrontChanged = keepFrontChanged; window.guideSkipFile = guideSkipFile; window.dateTyped = dateTyped; window.setTz = setTz;
+  window.setMonths = setMonths; window.loadDefaults = loadDefaults; window.seasonDatesChanged = seasonDatesChanged; window.clearSeasonDates = clearSeasonDates;
+  window.exportAlarms = exportAlarms; window.importAlarms = importAlarms;
+
+  init();
+})();
+</script>
+</body>
+</html>
