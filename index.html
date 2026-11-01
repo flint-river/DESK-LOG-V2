@@ -436,7 +436,7 @@
       <h2 style="margin-top:28px">Multi-Monitor Alert Windows</h2>
       <div class="row">
         <input id="fWin" type="number" min="1" max="6" value="4" title="Number of alert windows (one per monitor)">
-        <button onclick="openSentinels()">Open Alert Windows</button>
+        <button id="fOpenBtn" onclick="openSentinels()">Open Alert Windows</button>
       </div>
       <div class="hint" id="winCount" style="color:var(--accent)">0 alert window(s) connected</div>
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
@@ -519,12 +519,12 @@
           <div class="gnum">3</div>
           <div class="gbody">
             <div class="gh">Put an alert window on every screen</div>
-            <div class="gt">Starts at 1 window. Want every screen covered? Type how many screens you have. Then click the button.
-              Small windows will pop up. Drag one onto each screen and leave them there.
-              <br>If nothing pops up, look for a blocked popup icon at the right end of the address bar, click it, choose Always allow, and click the button again. If only one window appears, just click the button again until you have them all (the count shows under the button on the edit form).</div>
+            <div class="gt">Type how many screens you have, then click the button. Edge lets the page open one window per click,
+              so keep clicking the same button until it says all are open. Each one lands on its own screen; drag if needed and leave them there.
+              <br>If nothing pops up, look for a blocked popup icon at the right end of the address bar, click it, choose Always allow, and click the button again.</div>
             <div class="row" style="max-width:360px">
               <input id="gWin" type="number" min="1" max="6" value="4" style="max-width:80px">
-              <button class="primary" onclick="guideWindows()">Open Alert Windows</button>
+              <button class="primary" id="gOpenBtn" onclick="guideWindows()">Open Alert Windows</button>
             </div>
           </div>
           <div class="gdone" id="g3d"></div>
@@ -1831,7 +1831,12 @@
     document.getElementById('nowL').textContent = pad(dn.getHours()) + ':' + pad(dn.getMinutes()) + ':' + pad(dn.getSeconds());
     document.getElementById('nowZ').textContent = pad(dn.getUTCHours()) + ':' + pad(dn.getUTCMinutes()) + ':' + pad(dn.getUTCSeconds());
     updateFireIn();
-    document.getElementById('winCount').textContent = liveSentinels() + ' alert window(s) connected';
+    var live = liveSentinels(), want = settings.windows || 1;
+    document.getElementById('winCount').textContent = live + ' of ' + want + ' alert window(s) open';
+    var lbl = live >= want ? 'All ' + want + ' alert windows open' : (live ? 'Click again - ' + live + ' of ' + want + ' open' : 'Open Alert Windows (0 of ' + want + ' open)');
+    var gb = document.getElementById('gOpenBtn'), fb = document.getElementById('fOpenBtn');
+    if (gb && gb.textContent !== lbl) gb.textContent = lbl;
+    if (fb && fb.textContent !== lbl) fb.textContent = lbl;
     updateGuide();
     qTick();
     pushNextToSentinels();
