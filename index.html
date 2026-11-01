@@ -377,7 +377,7 @@
       <label>Early alarm (minutes before the alarm time, 0 = none)</label>
       <input id="fPre" type="number" min="0" value="5">
       <label>Repeat</label>
-      <select id="fRepeat">
+      <select id="fRepeat" onchange="repeatChanged()">
         <option value="none">One time</option>
         <option value="m15">Every 15 minutes</option>
         <option value="m30">Every 30 minutes</option>
@@ -391,6 +391,7 @@
         <option value="daily">Daily</option>
         <option value="weekdays">Weekdays (Mon-Fri)</option>
         <option value="weekends">Weekends (Sat-Sun)</option>
+        <option value="days">Custom days (pick below)</option>
         <option value="weekly">Weekly (same day)</option>
         <option value="biweekly">Every 2 weeks</option>
         <option value="monthly">Monthly (same date)</option>
@@ -399,6 +400,16 @@
         <option value="semiannual">Every 6 months</option>
         <option value="yearly">Yearly</option>
       </select>
+      <div id="daysBox" class="sub">
+        <label>Which days (green = on)</label>
+        <div class="months" id="dayGrid" style="grid-template-columns: repeat(7, 1fr)"></div>
+        <div class="row" style="margin-top:4px">
+          <button class="small" onclick="setDays('monsat')">Mon - Sat</button>
+          <button class="small" onclick="setDays('weekdays')">Mon - Fri</button>
+          <button class="small" onclick="setDays('all')">Every day</button>
+        </div>
+        <div class="hint" id="daysHint"></div>
+      </div>
       <label>Seasonal - only fire in these months (all checked = all year)</label>
       <div class="months" id="monthGrid"></div>
       <div class="row" style="margin-top:4px">
@@ -759,7 +770,7 @@
       <p><b>Which clock controls</b> matters twice a year when the clocks change. LOCAL means the reminder keeps its local wall time (09:00L stays 09:00L and the Zulu time shifts an hour). ZULU means it keeps its Zulu time (1400Z stays 1400Z and the local time shifts). It sets itself to whichever box you typed in; you can also click LOCAL or ZULU. The list shows the controlling time in bold color.</p>
 
       <h3 id="h-repeat">Repeat and seasons</h3>
-      <p><b>Repeat</b> runs from one time through every 15 minutes, hourly, every 2-12 hours, daily, weekdays, weekends, weekly, every 2 weeks, monthly, every 2 months, quarterly, every 6 months, yearly. Monthly types keep the date and clamp at month end (Jan 31 becomes Feb 28).</p>
+      <p><b>Repeat</b> runs from one time through every 15 minutes, hourly, every 2-12 hours, daily, weekdays, weekends, custom days (pick any mix of Sun-Sat, for example Mon-Sat), weekly, every 2 weeks, monthly, every 2 months, quarterly, every 6 months, yearly. Monthly types keep the date and clamp at month end (Jan 31 becomes Feb 28).</p>
       <p><b>Seasonal</b> limits a repeating reminder to part of the year. Either click the month buttons (green = active; All year, Oct - Apr, May - Sep shortcuts) or set exact From and To dates (every year, the year part is ignored, and it can wrap over New Year like Nov 15 to Mar 31). Exact dates win over the month buttons. Out of season the reminder sits dimmed in the list and says when it next fires.</p>
 
       <h3 id="h-list">The reminder list</h3>
@@ -1163,7 +1174,7 @@
       out.push({ id: uid() + i, cat: t.cat, flt: '', fltNo: '', tail: '', orig: '', dest: '',
         at: at, pre: t.pre || 0, repeat: t.repeat || 'daily', tz: t.tz || 'L',
         months: t.months || [true, true, true, true, true, true, true, true, true, true, true, true],
-        season: t.season || null,
+        season: t.season || null, days: t.days || null,
         notes: t.notes || '', muted: false, fired: false, preFired: false, title: t.title });
     }
     return out;
@@ -1208,6 +1219,7 @@
     return d.getTime();
   }
   // Next occurrence strictly after the current one; null for one-time. tz 'Z' keeps the Zulu time fixed.
+  var curDays = null;   // the alarm's day set while nextOnce runs (set by callers)
   function nextOnce(at, r, tz) {
     if (tz === 'Z') {
       var dowZ = function (ms) { return new Date(ms).getUTCDay(); };
@@ -1215,6 +1227,7 @@
         case 'daily': return addDaysZ(at, 1);
         case 'weekdays': { var nz = addDaysZ(at, 1); while (dowZ(nz) === 0 || dowZ(nz) === 6) nz = addDaysZ(nz, 1); return nz; }
         case 'weekends': { var wz = addDaysZ(at, 1); while (dowZ(wz) !== 0 && dowZ(wz) !== 6) wz = addDaysZ(wz, 1); return wz; }
+        case 'days': { var dz = addDaysZ(at, 1), gz = 0; while (!(curDays && curDays[dowZ(dz)]) && gz++ < 8) dz = addDaysZ(dz, 1); return dz; }
         case 'weekly': return addDaysZ(at, 7);
         case 'biweekly': return addDaysZ(at, 14);
         case 'monthly': return addMonthsZ(at, 1);
@@ -1238,6 +1251,7 @@
       case 'daily': return addDays(at, 1);
       case 'weekdays': { var n = addDays(at, 1); while (new Date(n).getDay() === 0 || new Date(n).getDay() === 6) n = addDays(n, 1); return n; }
       case 'weekends': { var w = addDays(at, 1); while (new Date(w).getDay() !== 0 && new Date(w).getDay() !== 6) w = addDays(w, 1); return w; }
+      case 'days': { var dd = addDays(at, 1), g = 0; while (!(curDays && curDays[new Date(dd).getDay()]) && g++ < 8) dd = addDays(dd, 1); return dd; }
       case 'weekly': return addDays(at, 7);
       case 'biweekly': return addDays(at, 14);
       case 'monthly': return addMonths(at, 1);
@@ -1250,12 +1264,28 @@
   }
   // Roll a repeating alarm forward until it is in the future
   function reschedule(a) {
+    curDays = a.days || null;
     var n = nextOnce(a.at, a.repeat, a.tz);
     if (n === null) return false;
     var guard = 0;
     while ((n <= Date.now() || !inSeason(a, n)) && guard++ < 20000) n = nextOnce(n, a.repeat, a.tz);
     a.at = n; a.fired = false; a.preFired = false;
     return true;
+  }
+  var DAYN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function daysLabel(d) {
+    if (!d || d.length !== 7) return 'custom days';
+    var on = []; for (var i = 0; i < 7; i++) if (d[i]) on.push(i);
+    if (on.length === 7) return 'every day';
+    if (!on.length) return 'no days';
+    if (on.join() === '1,2,3,4,5') return 'weekdays';
+    if (on.join() === '0,6') return 'weekends';
+    if (on.join() === '1,2,3,4,5,6') return 'Mon-Sat';
+    if (on.join() === '0,1,2,3,4,5') return 'Sun-Fri';
+    // contiguous run (no wrap) -> "Tue-Fri", else list
+    var contiguous = on[on.length - 1] - on[0] === on.length - 1;
+    if (contiguous && on.length > 2) return DAYN[on[0]] + '-' + DAYN[on[on.length - 1]];
+    return on.map(function (i) { return DAYN[i]; }).join(', ');
   }
   var REPEAT_NAMES = { none: '', m15: 'every 15m', m30: 'every 30m', hourly: 'hourly', h2: 'every 2h', h3: 'every 3h',
     h4: 'every 4h', h6: 'every 6h', h8: 'every 8h', h12: 'every 12h', daily: 'daily', weekdays: 'weekdays',
@@ -2415,7 +2445,7 @@
       var cls = a.muted ? 'muted' : (offNow ? 'offseason' : (trig <= now ? 'due' : (trig - now < 10 * 60000 ? 'soon' : '')));
       if (a.repeat === 'none') cls += ' onetime';
       var seasonTxt = hasDates ? seasonLabel(a.season) : (seasonal ? monthsLabel(a.months) : '');
-      var rep = (REPEAT_NAMES[a.repeat] || 'one time') + (seasonal ? '<br><span class="notes">' + seasonTxt + ' only</span>' : '');
+      var rep = (a.repeat === 'days' ? daysLabel(a.days) : (REPEAT_NAMES[a.repeat] || 'one time')) + (seasonal ? '<br><span class="notes">' + seasonTxt + ' only</span>' : '');
       var d = new Date(a.at);
       var flags = [];
       if (a.muted) flags.push('MUTED for this one - unmutes at the next occurrence');
@@ -2488,6 +2518,8 @@
     set('fNotes', a.notes);
     set('fPre', a.pre);
     set('fRepeat', a.repeat || 'none');
+    fireDays = (a.days && a.days.length === 7) ? a.days.slice() : [false, true, true, true, true, true, true];
+    repeatChanged();
     fireMonths = (a.months && a.months.length === 12) ? a.months.slice() : [true, true, true, true, true, true, true, true, true, true, true, true];
     setSeasonInputs(a.season && a.season.from ? a.season : null);
     renderMonths();
@@ -2532,6 +2564,8 @@
     setTz('L');
     setSeasonInputs(null);
     setMonths('all');
+    document.getElementById('fRepeat').value = 'none';
+    setDays('monsat'); repeatChanged();
     setDefaultTime();
   }
   // ACK from the list: handled now, move to the next occurrence (one-time: remove)
@@ -2546,6 +2580,7 @@
         document.getElementById('status').textContent = 'Acknowledged and removed: ' + title;
       } else {
         // step forward at least once, then keep going until the trigger time is in the future
+        curDays = a.days || null;
         var n = nextOnce(a.at, a.repeat, a.tz);
         var guard = 0;
         while (n !== null && ((n - (a.pre || 0) * 60000) <= Date.now() || !inSeason(a, n)) && guard++ < 20000) n = nextOnce(n, a.repeat, a.tz);
@@ -2568,6 +2603,34 @@
     }
     save(); render();
   }
+  // ---------- Custom days (Repeat = Custom days) ----------
+  var fireDays = [false, true, true, true, true, true, true];   // default Mon-Sat
+  function buildDayGrid() {
+    var g = document.getElementById('dayGrid');
+    var h = '';
+    for (var i = 0; i < 7; i++) h += '<button data-d="' + i + '">' + DAYN[i] + '</button>';
+    g.innerHTML = h;
+    var b = g.querySelectorAll('button');
+    for (var j = 0; j < b.length; j++) b[j].onclick = function () { var i = parseInt(this.getAttribute('data-d'), 10); fireDays[i] = !fireDays[i]; renderDays(); };
+    renderDays();
+  }
+  function renderDays() {
+    var g = document.getElementById('dayGrid'); if (!g) return;
+    var b = g.querySelectorAll('button');
+    for (var i = 0; i < b.length; i++) b[i].className = fireDays[i] ? 'sel' : '';
+    var hint = document.getElementById('daysHint');
+    if (hint) hint.textContent = 'Fires on: ' + daysLabel(fireDays) + (daysLabel(fireDays) === 'no days' ? ' - pick at least one' : '');
+  }
+  function setDays(kind) {
+    for (var i = 0; i < 7; i++) fireDays[i] = kind === 'all' ? true : (kind === 'weekdays' ? (i >= 1 && i <= 5) : (i >= 1 && i <= 6));
+    renderDays();
+  }
+  function repeatChanged() {
+    var isDays = document.getElementById('fRepeat').value === 'days';
+    document.getElementById('daysBox').className = 'sub' + (isDays ? ' open' : '');
+    if (isDays) renderDays();
+  }
+
   // ---------- Seasonal: which months a reminder may fire in ----------
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var fireMonths = [true, true, true, true, true, true, true, true, true, true, true, true];
@@ -2703,11 +2766,14 @@
       orig: isFlt ? val('fOrig').toUpperCase() : '',
       dest: isFlt ? val('fDest').toUpperCase() : '',
       at: at, pre: pre, repeat: val('fRepeat') || 'none', tz: fireTz,
+      days: val('fRepeat') === 'days' ? fireDays.slice() : null,
       months: fireMonths.slice(), season: fireSeason ? { from: fireSeason.from, to: fireSeason.to } : null,
       notes: val('fNotes'), muted: false,
       fired: false, preFired: false
     };
     if (!a.season && !anyMonth(a.months)) { alert('Pick at least one month, or click All year.'); return; }
+    if (a.repeat === 'days' && daysLabel(a.days) === 'no days') { alert('Pick at least one day.'); return; }
+    if (a.repeat === 'days' && !a.days[new Date(a.at).getDay()]) { reschedule(a); }   // first date is not one of the picked days: move to the next one
     if (!inSeason(a, a.at)) {
       if (a.repeat === 'none') { alert('That date is outside the season you picked. Change the date or the season.'); return; }
       reschedule(a);
@@ -2838,6 +2904,8 @@
     renderSettings();
     buildHourGrid();
     buildMonthGrid();
+    buildDayGrid();
+    repeatChanged();
     load();
     if (!alarms.length && localStorage.getItem(keyFor(user)) === null) { loadDefaults(true); }
     if (!fsSupported()) {
@@ -2894,7 +2962,7 @@
   window.toggleSound = toggleSound; window.paletteChanged = paletteChanged; window.previewPalette = previewPalette;
   window.guideSkipSound = guideSkipSound; window.cancelEdit = cancelEdit; window.toggleLeft = toggleLeft;
   window.keepFrontChanged = keepFrontChanged; window.guideSkipFile = guideSkipFile; window.dateTyped = dateTyped; window.setTz = setTz;
-  window.setMonths = setMonths; window.loadDefaults = loadDefaults; window.seasonDatesChanged = seasonDatesChanged; window.clearSeasonDates = clearSeasonDates;
+  window.setMonths = setMonths; window.loadDefaults = loadDefaults; window.setDays = setDays; window.repeatChanged = repeatChanged; window.seasonDatesChanged = seasonDatesChanged; window.clearSeasonDates = clearSeasonDates;
   window.exportAlarms = exportAlarms; window.importAlarms = importAlarms;
 
   init();
