@@ -494,6 +494,7 @@
             <div class="gt">Your reminders are kept in a file on your I: drive called <b>desk-log-data.js</b>.
               Click the button, find that file on your I: drive, and click Open.
               <br>First time ever? Click <b>I do not have a file yet</b> instead and save the new file to your I: drive.
+              (If you pick a file you already have, it is loaded, not replaced - so either button is safe.)
               <br>Tip: in the file window, your I: drive is in the list on the left. It is named with your employee number,
               like <b>840422$ (\\natladmhqrfs04) (I:)</b>. If the window opens somewhere else, click that one.</div>
             <button class="primary" onclick="openFile()">Open My File (I: drive)</button>
@@ -713,6 +714,7 @@
       <p>Your reminders, your settings, your notes and your captures all live in one file: <b>desk-log-data.js</b>. Keep it on your I: drive. Once it is open (the status line under My Reminders File turns green), every change saves to it by itself about a second later. You never need to click Save, though there is a Save Now button if you want to be sure.</p>
       <p>Edge asks for one approval per session to write to that file; that is the Open My File click. There is no way around that, it is how the browser protects your files.</p>
       <p>If the file is not open, the page still works, but anything you add today lives only in this desk's browser and is gone when the VDI resets. The status line stays amber to remind you.</p>
+      <p>Both file buttons are safe: Open My File reads your file. Create I: File (or I do not have a file yet) makes a new one, but if you point it at a file that already has your Desk Log in it, it loads that file instead of writing over it. The page never writes to a file it has not first read or created in this session.</p>
       <p>Tip: in the file window, your I: drive is in the list on the left, named with your employee number, like 840422$ (\\natladmhqrfs04) (I:). You can also just drag desk-log-data.js from Explorer and drop it anywhere on this page.</p>
 
       <h3 id="h-windows">Alert windows</h3>
@@ -954,15 +956,34 @@
       .catch(function (e) { if (e && e.name !== 'AbortError') alert('Could not open file: ' + e.message); });
   }
   // Link (create or replace) desk-log-data.js next to this page; current list is written to it
+  // Create: a save dialog so a brand-new file can be made. SAFE: if the chosen file already holds a
+  // Desk Log (someone picked their existing file by mistake), it is LOADED, never overwritten.
   function createFile() {
     if (!fsSupported()) { alert('This browser does not support file linking. Use Export / Import instead.'); return; }
     window.showSaveFilePicker({ id: 'desklog', suggestedName: DATA_FILE, types: FILE_TYPES })
-      .then(function (h) { fileHandle = h; return writeFile(); })
-      .then(function () { setFileStatus('Linked: ' + fileHandle.name + ' (' + alarms.length + ' reminders) - auto-saving', true); })
+      .then(function (h) {
+        return h.getFile().then(function (f) { return f.text(); }).then(function (txt) {
+          var d = parseDataText(txt);
+          var hasData = d.alarms.length > 0 || !!d.settings || !!d.pad || !!d.caps;
+          if (hasData) {
+            // existing file: keep it, load it
+            return linkHandle(h).then(function () {
+              document.getElementById('status').textContent = 'That file already had your Desk Log in it - loaded it instead of replacing it.';
+              setFileStatus('Linked: ' + h.name + ' (' + alarms.length + ' reminders) - loaded your saved copy - auto-saving', true);
+            });
+          }
+          // new or empty file: write what is on screen (the defaults for a first-timer)
+          fileHandle = h; fileReady = true;
+          return writeFile().then(function () {
+            setFileStatus('Linked: ' + h.name + ' (' + alarms.length + ' reminders) - new file created - auto-saving', true);
+          });
+        });
+      })
       .catch(function (e) { if (e && e.name !== 'AbortError') alert('Could not link file: ' + e.message); });
   }
   function writeFile() {
     if (!fileHandle) return Promise.resolve();
+    if (!fileReady) return Promise.resolve();   // never write a file we have not loaded or created in this session
     fileBusy = true;
     return fileHandle.createWritable()
       .then(function (w) { return w.write(dataText()).then(function () { return w.close(); }); })
@@ -973,10 +994,12 @@
       .catch(function (e) { fileBusy = false; saveFailed = true; setFileStatus('SAVE FAILED to ' + fileHandle.name + ': ' + e.message, false); });
   }
   // Shared by Open and drag-drop: read the file, link the handle
+  var fileReady = false;
   function linkHandle(h) {
-    fileHandle = h;
+    fileHandle = h; fileReady = false;
     return h.getFile().then(function (f) { return f.text(); }).then(function (txt) {
       applyLoaded(parseDataText(txt), h.name);
+      fileReady = true;
       dirty = false; lastSavedAt = Date.now();
       setFileStatus('Linked: ' + h.name + ' (' + alarms.length + ' reminders) - auto-saving', true);
       document.getElementById('status').textContent = 'Loaded ' + alarms.length + ' reminder(s) from ' + h.name;
