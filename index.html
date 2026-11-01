@@ -2930,31 +2930,36 @@
     var base = location.href.split('?')[0].split('#')[0];
     var url = base + '?sentinel=1';
     var opened = 0;
-    function openOne(i, left, top) {
+    // 1) Open every window NOW, inside the click. Waiting on anything first (like the
+    //    display permission prompt) lets the click expire and Edge then allows only one popup.
+    for (var i = 0; i < n; i++) {
+      var left = 60 + i * 40, top = 60 + i * 40;
       var p = settings.winPos && settings.winPos[i];
       if (p && typeof p.x === 'number' && typeof p.y === 'number') { left = p.x; top = p.y; }   // where it was last time
       var feat = 'popup=yes,width=420,height=260,left=' + left + ',top=' + top + ',menubar=no,toolbar=no,location=no,status=no';
       var w = window.open(url + '&idx=' + i, 'occSentinel' + i, feat);
-      if (w) { opened++; sentinels[i] = w; lastNextKey = ''; setTimeout(pushNextToSentinels, 1200); }
+      if (w) { opened++; sentinels[i] = w; }
     }
-    // Try Window Management API to place one per screen automatically
+    lastNextKey = ''; setTimeout(pushNextToSentinels, 1200);
+    document.getElementById('status').textContent = opened ? ('Opened ' + opened + ' alert window(s) - drag each to a monitor') : 'Popup blocked - allow popups for this page';
+    if (!opened) return;
+    // 2) Then, if the browser lets us see the other displays, move them into place:
+    //    saved positions first, otherwise one per screen.
     if (window.getScreenDetails) {
       window.getScreenDetails().then(function (sd) {
         var screens = sd.screens || [];
         var k = 0;
-        for (var i = 0; i < screens.length && k < n; i++) {
-          var s = screens[i];
-          openOne(k, s.availLeft + 40, s.availTop + 40); k++;
+        for (var i = 0; i < n; i++) {
+          var w2 = sentinels[i]; if (!w2 || w2.closed) continue;
+          var p2 = settings.winPos && settings.winPos[i];
+          var x, y;
+          if (p2 && typeof p2.x === 'number') { x = p2.x; y = p2.y; }
+          else if (screens[k]) { x = screens[k].availLeft + 40; y = screens[k].availTop + 40; k++; }
+          else continue;
+          try { w2.moveTo(x, y); } catch (e) {}
         }
-        while (k < n) { openOne(k, 60 + k * 40, 60 + k * 40); k++; }
-        document.getElementById('status').textContent = 'Opened ' + opened + ' alert window(s) - drag each to a monitor';
-      }).catch(function () { openCascade(); });
-    } else {
-      openCascade();
-    }
-    function openCascade() {
-      for (var i = 0; i < n; i++) openOne(i, 60 + i * 40, 60 + i * 40);
-      document.getElementById('status').textContent = opened ? ('Opened ' + opened + ' alert window(s) - drag each to a monitor') : 'Popup blocked - allow popups for this page';
+        if (screens.length > 1) document.getElementById('status').textContent = 'Opened ' + opened + ' alert window(s) and placed them across ' + screens.length + ' screens';
+      }).catch(function () {});
     }
   }
 
