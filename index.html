@@ -576,6 +576,8 @@
       <div class="actions">
         <button class="small" onclick="loadDefaults()" title="Add the standard team reminders (skips any you already have)">Load Defaults</button>
         <button class="small danger" onclick="clearAll()" title="Delete every reminder in the list">Clear All</button>
+        <button class="small danger" onclick="resetDefaults()" title="Replace your reminder list with the standard team list">Reset to Team Defaults</button>
+        <label class="hint" style="margin:0; display:flex; align-items:center; gap:4px; cursor:pointer"><input type="checkbox" id="resetSettingsToo" style="width:auto"> also reset my settings</label>
         <button class="small" onclick="toggleAdvanced()" id="advBtn" title="Copy / paste the list as text (backup if the file buttons are blocked)">Advanced</button>
       </div>
       <div id="advanced" style="display:none">
@@ -736,7 +738,7 @@
       <p>Every screen flashes with the reminder title in big letters, the time it is for, and your notes. Buttons:</p>
       <ul>
         <li><b>ACKNOWLEDGE</b> - handled. A daily reminder rolls to tomorrow. A one-time reminder is removed. If log acked alarms is on (Notes tab), a line goes into your shift log.</li>
-        <li><b>Snooze 5 / 10 / 15</b> - comes back in that many minutes, same buttons again.</li>
+        <li><b>Snooze 5 / 10 / 15</b> - comes back in that many minutes, same buttons again. A snooze changes nothing about the reminder itself; once you acknowledge, it rolls forward with its normal time and early alarm.</li>
         <li>If the reminder has an early alarm (say 2 minutes before), the alarm fires at the early time and there is an extra <b>Snooze 2 (= on time)</b> that lands you exactly on the call time. There is no second alarm at the call time; acknowledge means done, snooze if you want to be told again.</li>
       </ul>
       <p>Acknowledging or snoozing on any screen clears all of them.</p>
@@ -802,7 +804,7 @@
       <p>All of these are saved in your I: file, so your setup follows you.</p>
 
       <h3 id="h-defaults">Defaults, Clear All, Advanced</h3>
-      <p><b>Load Defaults</b> adds the standard team reminders (the SPO calls, briefings, huddles and so on) to your list, skipping any you already have. A brand-new user starts with them automatically. <b>Clear All</b> deletes every reminder. <b>Advanced</b> opens Export and Import, which copy and paste the whole file as text; use them if the I: file buttons are blocked on a computer, or to send your list to a coworker.</p>
+      <p><b>Load Defaults</b> adds the standard team reminders (the SPO calls, briefings, huddles and so on) to your list, skipping any you already have. A brand-new user starts with them automatically. <b>Clear All</b> deletes every reminder. <b>Reset to Team Defaults</b> throws your list away and puts the standard one back (type YES to confirm); tick <b>also reset my settings</b> to put sound, color, picture and window spots back too. Notes and captures are never touched by either. <b>Advanced</b> opens Export and Import, which copy and paste the whole file as text; use them if the I: file buttons are blocked on a computer, or to send your list to a coworker.</p>
 
       <h3 id="h-problems">If something is not working</h3>
       <ul>
@@ -954,6 +956,7 @@
     if (d.caps) { capsApply(d.caps); try { localStorage.setItem(CAPS_KEY, JSON.stringify(caps)); } catch (e) {} }
     padAutoArchive(); capAutoArchive();
     if (!lastUsedWindows) lastUsedWindows = settings.windows || 0;
+    if (typeof repairSnoozed === 'function' && document.getElementById('status')) setTimeout(repairSnoozed, 0);
     renderSettings();
     render();
   }
@@ -1131,8 +1134,8 @@
   var DEFAULT_ALARMS = [
     { time: '04:00', title: "MTC BRIEFING", cat: 'ops', pre: 5, repeat: 'daily', tz: 'L' },
     { time: '05:15', title: "EARLY SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
-    { time: '06:35', title: "ATL CALL", cat: 'call', pre: 0, repeat: 'daily', tz: 'L' },
-    { time: '06:45', title: "OCC HUDDLE", cat: 'call', pre: 0, repeat: 'daily', tz: 'L' },
+    { time: '06:35', title: "ATL CALL", cat: 'call', pre: 3, repeat: 'daily', tz: 'L' },
+    { time: '06:45', title: "OCC HUDDLE", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
     { time: '07:15', title: "SPO", cat: 'call', pre: 2, repeat: 'daily', tz: 'L' },
     { time: '07:30', title: "OCC BRIEFING", cat: 'call', pre: 5, repeat: 'daily', tz: 'L' },
     { time: '08:15', title: "REGIONAL BRIEFING", cat: 'call', pre: 2, repeat: 'weekdays', tz: 'L' },
@@ -1173,6 +1176,21 @@
         notes: t.notes || '', muted: false, fired: false, preFired: false, title: t.title });
     }
     return out;
+  }
+  // Repair reminders damaged by the old snooze (title tagged, early-alarm minutes zeroed)
+  function repairSnoozed() {
+    var defs = buildDefaults(), fixed = 0;
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (/ \(snoozed\)$/.test(a.title)) { a.title = a.title.replace(/ \(snoozed\)$/, ''); fixed++; }
+      if (!a.pre) {
+        for (var j = 0; j < defs.length; j++) {
+          var d = defs[j], ta = new Date(a.at), td = new Date(d.at);
+          if (d.title === a.title && ta.getHours() === td.getHours() && ta.getMinutes() === td.getMinutes() && d.pre) { a.pre = d.pre; fixed++; break; }
+        }
+      }
+    }
+    if (fixed) { save(); render(); document.getElementById('status').textContent = 'Repaired ' + fixed + ' reminder(s) left over from an old snooze.'; }
   }
   // Add any default that is not already in the list (matched on title + time of day)
   function loadDefaults(silent) {
@@ -1260,6 +1278,7 @@
   // Roll a repeating alarm forward until it is in the future
   function reschedule(a) {
     curDays = a.days || null;
+    a.snoozeAt = 0;
     var n = nextOnce(a.at, a.repeat, a.tz);
     if (n === null) return false;
     var guard = 0;
@@ -1707,12 +1726,14 @@
     } catch (e) {}
   }
   // Next thing that will actually fire (not muted, in season), as text for the alert windows
+  // When a reminder actually rings: its snooze time if snoozed, else the early-alarm time
+  function trigAt(a) { return a.snoozeAt ? a.snoozeAt : a.at - (a.pre || 0) * 60000; }
   function nextAlarm() {
     var best = null, bestAt = 0;
     for (var i = 0; i < alarms.length; i++) {
       var a = alarms[i];
       if (a.muted || a.fired || !inSeason(a, a.at)) continue;
-      var trig = a.at - (a.pre || 0) * 60000;
+      var trig = trigAt(a);
       if (!best || trig < bestAt) { best = a; bestAt = trig; }
     }
     return best ? { at: bestAt, title: best.title.replace(/ \(snoozed\)$/, '') } : null;
@@ -1851,9 +1872,9 @@
       }
       // early warning
       // one alarm per reminder: at the early time if one is set, otherwise at the alarm time
-      if (!a.fired && now >= a.at - (a.pre || 0) * 60000) {
+      if (!a.fired && now >= trigAt(a)) {
         a.fired = true; a.preFired = true; changed = true;
-        fire(a, a.pre > 0);
+        fire(a, !a.snoozeAt && a.pre > 0);
       }
     }
     if (changed) save();
@@ -1896,7 +1917,8 @@
     for (var i = alarms.length - 1; i >= 0; i--) {
       var a = alarms[i];
       if (firedNow.indexOf(a.id) < 0) continue;
-      if (settings.padLogAcks && a.id !== 'test') padAppend(a.title.replace(/ \(snoozed\)$/, '') + ' - acked');
+      if (settings.padLogAcks && a.id !== 'test') padAppend(a.title + ' - acked');
+      a.snoozeAt = 0;
       if (!reschedule(a)) alarms.splice(i, 1);
     }
     firedNow = [];
@@ -1911,8 +1933,8 @@
       var a = alarms[i];
       if (firedNow.indexOf(a.id) < 0) continue;
       if (a.fired) {
-        a.at = now + mins * 60000; a.pre = 0; a.fired = false; a.preFired = true;   // snoozed: fires exactly then
-        a.title = a.title.indexOf('(snoozed)') < 0 ? a.title + ' (snoozed)' : a.title;
+        a.snoozeAt = now + mins * 60000;   // ring again then; the reminder itself is untouched
+        a.fired = false; a.preFired = true;
       }
     }
     firedNow = [];
@@ -1928,7 +1950,7 @@
     var now = Date.now();
     var endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999); endOfToday = endOfToday.getTime();
     var today = [], later = [];
-    for (var t0 = 0; t0 < list.length; t0++) ((list[t0].at - (list[t0].pre || 0) * 60000) <= endOfToday ? today : later).push(list[t0]);
+    for (var t0 = 0; t0 < list.length; t0++) (trigAt(list[t0]) <= endOfToday ? today : later).push(list[t0]);
     var head = '<table><tr><th>Reminder</th><th></th><th>Alarm</th><th>In</th><th>Repeat</th><th>Triggers Alarm</th><th>Cat</th><th></th></tr>';
     var h = '<div class="bucket">TODAY - ' + today.length + ' left</div>';
     h += today.length ? head + rowsHtml(today, now) + '</table>' : '<div class="empty">Nothing more today.</div>';
@@ -2519,7 +2541,7 @@
       var hasDates = a.season && a.season.from && a.season.to;
       var seasonal = hasDates || (a.months && a.months.length === 12 && !allMonths(a.months));
       var offNow = seasonal && !inSeason(a, now);
-      var trig = a.at - (a.pre || 0) * 60000;
+      var trig = trigAt(a);
       var cls = a.muted ? 'muted' : (offNow ? 'offseason' : (trig <= now ? 'due' : (trig - now < 10 * 60000 ? 'soon' : '')));
       if (a.repeat === 'none') cls += ' onetime';
       var seasonTxt = hasDates ? seasonLabel(a.season) : (seasonal ? monthsLabel(a.months) : '');
@@ -2528,7 +2550,7 @@
       var flags = [];
       if (a.muted) flags.push('MUTED for this one - unmutes at the next occurrence');
       if (offNow) flags.push('off season now - next fires ' + fmtDateL(new Date(a.at)));
-      if (/\(snoozed\)$/.test(a.title)) flags.push('snoozed');
+      if (a.snoozeAt) flags.push('snoozed - rings again at ' + fmtTrig(new Date(a.snoozeAt), a.tz));
       h += '<tr class="' + cls + '">' +
         '<td style="font-size:15px; font-weight:bold">' + esc(a.title) + (a.notes ? '<div class="notes" style="font-weight:normal">' + esc(a.notes) + '</div>' : '') +
         (flags.length ? '<div class="notes" style="color:var(--warn); font-weight:normal">' + flags.join(' | ') + '</div>' : '') + '</td>' +
@@ -2537,7 +2559,7 @@
           ? pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L <b style="color:var(--warn)">' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z</b>'
           : '<b style="color:var(--accent)">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + 'L</b> ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + 'Z') +
         '<br><span class="notes">' + fmtDateL(d) + ' - ' + (a.tz === 'Z' ? 'Zulu' : 'local') + ' controls</span></td>' +
-        '<td class="countdown">' + (a.muted ? 'MUTED' : countdown(a.at - (a.pre || 0) * 60000)) + '</td>' +
+        '<td class="countdown">' + (a.muted ? 'MUTED' : countdown(trigAt(a))) + '</td>' +
         '<td>' + rep + '</td>' +
         '<td>' + (a.pre > 0
           ? a.pre + ' min before<br><span class="notes">at ' + fmtTrig(new Date(a.at - a.pre * 60000), a.tz) + '</span>'
@@ -2652,7 +2674,7 @@
       var a = alarms[i];
       if (a.id !== id) continue;
       var title = a.title;
-      if (settings.padLogAcks) padAppend(title.replace(/ \(snoozed\)$/, '') + ' - acked');
+      if (settings.padLogAcks) padAppend(title + ' - acked');
       if (a.repeat === 'none') {
         alarms.splice(i, 1);
         document.getElementById('status').textContent = 'Acknowledged and removed: ' + title;
@@ -2663,7 +2685,7 @@
         var guard = 0;
         while (n !== null && ((n - (a.pre || 0) * 60000) <= Date.now() || !inSeason(a, n)) && guard++ < 20000) n = nextOnce(n, a.repeat, a.tz);
         if (n !== null) { a.at = n; a.fired = false; a.preFired = false; a.muted = false; }
-        a.title = a.title.replace(/ \(snoozed\)$/, '');
+        a.snoozeAt = 0;
         document.getElementById('status').textContent = 'Acknowledged: ' + title + ' - next ' + fmtShort(a.at);
       }
       // if it is flashing right now, clear that too
@@ -2895,6 +2917,21 @@
     reopenSentinels();
     broadcast(lastFireMsg);
   }
+  function resetDefaults() {
+    var alsoSettings = document.getElementById('resetSettingsToo').checked;
+    askYes('Reset to team defaults?', 'Your reminder list is replaced with the ' + DEFAULT_ALARMS.length + ' standard team reminders.' + (alsoSettings ? '\nYour settings (sound, color, picture, window spots) go back to the team defaults too.' : '\nYour settings are kept.') + '\nNotes and captures are not touched.', function () {
+      alarms = buildDefaults();
+      for (var i = 0; i < alarms.length; i++) if (!inSeason(alarms[i], alarms[i].at)) reschedule(alarms[i]);
+      if (alsoSettings) {
+        settings = { sound: true, palette: 'red', keepFront: true, windows: 0, backdrop: DEFAULT_BACKDROP, backdropDim: 45, padLogAcks: true };
+        try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {}
+        renderSettings();
+      }
+      document.getElementById('resetSettingsToo').checked = false;
+      save(); render();
+      document.getElementById('status').textContent = 'Reset to the ' + alarms.length + ' team default reminders' + (alsoSettings ? ' and default settings' : '') + '.';
+    });
+  }
   function clearAll() {
     if (!alarms.length) { document.getElementById('status').textContent = 'No reminders to clear.'; return; }
     askYes('Delete all reminders?', 'This removes all ' + alarms.length + ' reminder(s), including the standing calls.\nLoad Defaults can bring the standard ones back.', function () {
@@ -3029,6 +3066,7 @@
     padAutoArchive(); capAutoArchive();
     setInterval(function () { padAutoArchive(); capAutoArchive(); }, 3600000);
     learnScreens();
+    repairSnoozed();
     setLeft(true);        // always launch with the edit form collapsed
     showTab('alarms');    // and on the Alarms tab
     qReset();
@@ -3057,7 +3095,7 @@
   window.testAlarm = testAlarm; window.ackAll = ackAll; window.snoozeAll = snoozeAll;
   window.openSentinels = openSentinels; window.clearAll = clearAll; window.catChanged = catChanged;
   window.localTyped = localTyped; window.zuluTyped = zuluTyped; window.setDefaultTime = setDefaultTime;
-  window.toggleAdvanced = toggleAdvanced; window.toggleLater = toggleLater;
+  window.toggleAdvanced = toggleAdvanced; window.toggleLater = toggleLater; window.resetDefaults = resetDefaults;
   window.backdropPicked = backdropPicked; window.clearBackdrop = clearBackdrop; window.backdropDimChanged = backdropDimChanged;
   window.quickAdd = quickAdd; window.qPlus = qPlus; window.qSnap = qSnap; window.qReset = qReset; window.qUndo = qUndo;
   window.padStamp = padStamp; window.padChanged = padChanged; window.padCopy = padCopy; window.padNewShift = padNewShift;
